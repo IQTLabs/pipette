@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+# pipette implements a simple L2/L3 proxy between a real broadcast domain/subnet and a fake one.
+
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -24,7 +26,9 @@ from ryu.ofproto import ofproto_v1_3 as ofp
 from ryu.ofproto import ofproto_v1_3_parser as parser
 
 
-# OVS port facing coprocessor.
+# OVS port facing coprocessor (expects packets without a VLAN tag from a FAUCET port ACL)
+# Coprocessor only accepts packets with a VLAN tag.
+# TODO: add flows to handle packets from VLAN ACL with tag as well.
 COPROPORT = 1
 # OVS port facing fake services.
 FAKEPORT = 2
@@ -36,7 +40,7 @@ FAKECLIENTMAC = '0e:00:00:00:00:67'
 VLAN = 2
 # IP address of fake services.
 NFVIP = '192.168.2.1'
-# Idle timeout for translated flows.
+# Idle timeout for translated flows (garbage collect)
 IDLE = 30
 
 
@@ -73,21 +77,26 @@ class Pipette(app_manager.RyuApp):
                 table_id=table_id,
                 priority=0,
                 instructions=[]))
-        for table_id, priority, match, instructions in (
+        for table_id, match, instructions in (
                 # Learn TCP 3-tuple from coprocessor port/do inbound translation.
-                (1, 0, None, self.output_controller()),
+                # TODO: use 4-tuple with source port as well.
+                (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP),
+                    self.output_controller()),
                 # Do outbound translation and also handle fake ARP to services on fake interface.
-                (2, 1, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP), self.output_controller()),
+                (2, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP),
+                    self.output_controller()),
                 # Packets from coprocessor go to TCP-3 tuple inbound table.
-                (0, 1, parser.OFPMatch(in_port=COPROPORT), [parser.OFPInstructionGotoTable(1)]),
+                (0, parser.OFPMatch(in_port=COPROPORT),
+                    [parser.OFPInstructionGotoTable(1)]),
                 # Packets from fake interface go to TCP-3'd outbound table.
-                (0, 1, parser.OFPMatch(in_port=FAKEPORT), [parser.OFPInstructionGotoTable(2)]),
+                (0, parser.OFPMatch(in_port=FAKEPORT),
+                    [parser.OFPInstructionGotoTable(2)]),
             ):
             mods.append(parser.OFPFlowMod(
                 datapath=datapath,
                 command=ofp.OFPFC_ADD,
                 table_id=table_id,
-                priority=priority,
+                priority=1,
                 match=match,
                 instructions=instructions))
         self.send_mods(datapath, mods)
@@ -102,7 +111,10 @@ class Pipette(app_manager.RyuApp):
         mods = []
         if in_port == FAKEPORT:
             arp_req = pkt.get_protocol(arp.arp)
+            if not arg_req:
+                return
             opcode = arp_req.opcode
+            # Reply to fake service, proxying real host.
             if opcode == arp.ARP_REQUEST:
                 pkt = packet.Packet()
                 eth_header = ethernet.ethernet(FAKESERVERMAC, FAKECLIENTMAC, ether.ETH_TYPE_ARP)
@@ -122,7 +134,11 @@ class Pipette(app_manager.RyuApp):
                 mods.append(mod)
         if in_port == COPROPORT:
             ip4 = pkt.get_protocol(ipv4.ipv4)
+            if not ip4:
+                return
             tcp4 = pkt.get_protocol(tcp.tcp)
+            if not tcp4:
+                return
             # Add inbound from coprocessor translation entry.
             match = parser.OFPMatch(
                 eth_type=ether.ETH_TYPE_IP, eth_src=eth.src,
