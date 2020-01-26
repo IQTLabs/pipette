@@ -81,16 +81,16 @@ class Pipette(app_manager.RyuApp):
                 # Learn TCP 3-tuple from coprocessor port/do inbound translation.
                 # TODO: use 4-tuple with source port as well.
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP),
-                    self.output_controller()),
+                 self.output_controller()),
                 # Do outbound translation and also handle fake ARP to services on fake interface.
                 (2, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP),
-                    self.output_controller()),
+                 self.output_controller()),
                 # Packets from coprocessor go to TCP-3 tuple inbound table.
                 (0, parser.OFPMatch(in_port=COPROPORT),
-                    [parser.OFPInstructionGotoTable(1)]),
+                 [parser.OFPInstructionGotoTable(1)]),
                 # Packets from fake interface go to TCP-3'd outbound table.
                 (0, parser.OFPMatch(in_port=FAKEPORT),
-                    [parser.OFPInstructionGotoTable(2)]),
+                 [parser.OFPInstructionGotoTable(2)]),
             ):
             mods.append(parser.OFPFlowMod(
                 datapath=datapath,
