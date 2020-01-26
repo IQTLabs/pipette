@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-# pipette implements a simple L2/L3 proxy between a real broadcast domain/subnet and a fake one.
+# pipette implements a simple TCP-only L2/L3 proxy between a real broadcast domain/subnet and a fake one.
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -111,7 +111,7 @@ class Pipette(app_manager.RyuApp):
         mods = []
         if in_port == FAKEPORT:
             arp_req = pkt.get_protocol(arp.arp)
-            if not arg_req:
+            if not arp_req:
                 return
             opcode = arp_req.opcode
             # Reply to fake service, proxying real host.
@@ -139,6 +139,7 @@ class Pipette(app_manager.RyuApp):
             tcp4 = pkt.get_protocol(tcp.tcp)
             if not tcp4:
                 return
+            priority = 2
             # Add inbound from coprocessor translation entry.
             match = parser.OFPMatch(
                 eth_type=ether.ETH_TYPE_IP, eth_src=eth.src,
@@ -152,7 +153,7 @@ class Pipette(app_manager.RyuApp):
                 datapath=datapath,
                 command=ofp.OFPFC_ADD,
                 table_id=1,
-                priority=1,
+                priority=priority,
                 match=match,
                 idle_timeout=IDLE,
                 instructions=self.apply_actions(actions)))
@@ -171,7 +172,7 @@ class Pipette(app_manager.RyuApp):
                 datapath=datapath,
                 command=ofp.OFPFC_ADD,
                 table_id=2,
-                priority=1,
+                priority=priority,
                 match=match,
                 idle_timeout=IDLE,
                 instructions=self.apply_actions(actions)))
