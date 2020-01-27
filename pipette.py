@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
-# pipette implements a simple TCP-only L2/L3 proxy between a real broadcast domain/subnet and a fake one.
+# pipette implements a simple TCP-only L2/L3 proxy between a
+# real broadcast domain/subnet and a fake one.
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ipaddress
 import socket
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -26,7 +28,7 @@ from ryu.ofproto import ofproto_v1_3 as ofp
 from ryu.ofproto import ofproto_v1_3_parser as parser
 
 
-# OVS port facing coprocessor (expects packets without a VLAN tag from a FAUCET port ACL)
+# OVS port facing coprocessor (expects packets with or without a tag from the configured VLAN)
 # Coprocessor only accepts packets with a VLAN tag.
 # TODO: add flows to handle packets from VLAN ACL with tag as well.
 COPROPORT = 1
@@ -39,7 +41,7 @@ FAKECLIENTMAC = '0e:00:00:00:00:67'
 # VLAN to coprocess
 VLAN = 2
 # IP address of fake services.
-NFVIP = '192.168.2.1'
+NFVIP = ipaddress.ip_interface('192.168.2.1/24')
 # Idle timeout for translated flows (garbage collect)
 IDLE = 30
 
@@ -78,18 +80,22 @@ class Pipette(app_manager.RyuApp):
                 priority=0,
                 instructions=[]))
         for table_id, match, instructions in (
-                # Learn TCP 3-tuple from coprocessor port/do inbound translation.
-                # TODO: use 4-tuple with source port as well.
+                # Learn TCP 4-tuple from coprocessor port/do inbound translation.
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP),
                  self.output_controller()),
                 # Do outbound translation and also handle fake ARP to services on fake interface.
                 (2, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP),
                  self.output_controller()),
-                # Packets from coprocessor go to TCP-3 tuple inbound table.
-                (0, parser.OFPMatch(in_port=COPROPORT),
+                # If coprocessor gives us a tagged packet, strip it.
+                (0, parser.OFPMatch(vlan_vid=(0x1000, 0x1000), in_port=COPROPORT),
+                 self.apply_actions([parser.OFPActionPopVlan()]) + [parser.OFPInstructionGotoTable(1)]),
+                # Packets from coprocessor go to TCP-4 tuple inbound table.
+                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, in_port=COPROPORT),
                  [parser.OFPInstructionGotoTable(1)]),
                 # Packets from fake interface go to TCP-3'd outbound table.
-                (0, parser.OFPMatch(in_port=FAKEPORT),
+                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, in_port=FAKEPORT),
+                 [parser.OFPInstructionGotoTable(2)]),
+                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, in_port=FAKEPORT),
                  [parser.OFPInstructionGotoTable(2)]),
             ):
             mods.append(parser.OFPFlowMod(
@@ -143,11 +149,12 @@ class Pipette(app_manager.RyuApp):
             # Add inbound from coprocessor translation entry.
             match = parser.OFPMatch(
                 eth_type=ether.ETH_TYPE_IP, eth_src=eth.src,
-                ipv4_dst=ip4.dst, ip_proto=socket.IPPROTO_TCP, tcp_dst=tcp4.dst_port)
+                ipv4_dst=ip4.dst, ip_proto=socket.IPPROTO_TCP,
+                tcp_dst=tcp4.dst_port, tcp_src=tcp4.src_port)
             actions = [
                 parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
                 parser.OFPActionSetField(eth_dst=FAKESERVERMAC),
-                parser.OFPActionSetField(ipv4_dst=NFVIP),
+                parser.OFPActionSetField(ipv4_dst=str(NFVIP.ip)),
                 parser.OFPActionOutput(FAKEPORT)]
             mods.append(parser.OFPFlowMod(
                 datapath=datapath,
@@ -160,7 +167,8 @@ class Pipette(app_manager.RyuApp):
             # Add outbound to coprocessor translation entry.
             match = parser.OFPMatch(
                 eth_type=ether.ETH_TYPE_IP,
-                ipv4_dst=ip4.src, ip_proto=socket.IPPROTO_TCP, tcp_src=tcp4.dst_port)
+                ipv4_dst=ip4.src, ip_proto=socket.IPPROTO_TCP,
+                tcp_src=tcp4.dst_port, tcp_dst=tcp4.src_port)
             actions = [
                 parser.OFPActionSetField(eth_src=eth.dst),
                 parser.OFPActionSetField(eth_dst=eth.src),
