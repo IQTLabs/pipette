@@ -41,7 +41,7 @@ FAKECLIENTMAC = '0e:00:00:00:00:67'
 # VLAN to coprocess
 VLAN = 2
 # IP address of fake services.
-NFVIP = ipaddress.ip_interface('192.168.2.1/24')
+NFVIP = ipaddress.ip_interface('192.168.101.1/24')
 # Idle timeout for translated flows (garbage collect)
 IDLE = 30
 
@@ -146,14 +146,19 @@ class Pipette(app_manager.RyuApp):
             if not tcp4:
                 return
             priority = 2
+            ipv4_src = ipaddress.IPv4Address(ip4.src)
+            ipv4_dst = ipaddress.IPv4Address(ip4.dst)
+            src_ipv4_nat = ipaddress.IPv4Address(
+                (int(ipv4_src) & int(NFVIP.hostmask)) | int(NFVIP.network.network_address))
             # Add inbound from coprocessor translation entry.
             match = parser.OFPMatch(
                 eth_type=ether.ETH_TYPE_IP, eth_src=eth.src,
-                ipv4_dst=ip4.dst, ip_proto=socket.IPPROTO_TCP,
+                ipv4_dst=ipv4_dst, ip_proto=socket.IPPROTO_TCP,
                 tcp_dst=tcp4.dst_port, tcp_src=tcp4.src_port)
             actions = [
                 parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
                 parser.OFPActionSetField(eth_dst=FAKESERVERMAC),
+                parser.OFPActionSetField(ipv4_src=src_ipv4_nat),
                 parser.OFPActionSetField(ipv4_dst=str(NFVIP.ip)),
                 parser.OFPActionOutput(FAKEPORT)]
             mods.append(parser.OFPFlowMod(
@@ -167,12 +172,13 @@ class Pipette(app_manager.RyuApp):
             # Add outbound to coprocessor translation entry.
             match = parser.OFPMatch(
                 eth_type=ether.ETH_TYPE_IP,
-                ipv4_dst=ip4.src, ip_proto=socket.IPPROTO_TCP,
+                ipv4_dst=src_ipv4_nat, ip_proto=socket.IPPROTO_TCP,
                 tcp_src=tcp4.dst_port, tcp_dst=tcp4.src_port)
             actions = [
                 parser.OFPActionSetField(eth_src=eth.dst),
                 parser.OFPActionSetField(eth_dst=eth.src),
-                parser.OFPActionSetField(ipv4_src=ip4.dst),
+                parser.OFPActionSetField(ipv4_src=ipv4_dst),
+                parser.OFPActionSetField(ipv4_dst=ipv4_src),
                 parser.OFPActionPushVlan(ether.ETH_TYPE_8021Q),
                 parser.OFPActionSetField(vlan_vid=(VLAN | ofp.OFPVID_PRESENT)),
                 parser.OFPActionOutput(COPROPORT)]
