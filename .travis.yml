@@ -1,6 +1,10 @@
 dist: bionic
 sudo: required
+language: python
+services:
+  - docker
 cache:
   pip: true
 script:
   - pip3 install -U -r test-requirements.txt && pylint -E *py && pytype *py
+  - docker build -f Dockerfile . -t anarkiwi/pipette
