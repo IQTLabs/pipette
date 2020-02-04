@@ -84,6 +84,8 @@ class Pipette(app_manager.RyuApp):
         # TODO: add entries for UDP
         # TODO: use OVS actions=learn() for faster proxying (https://docs.openvswitch.org/en/latest/tutorials/ovs-advanced/)
         # OVS could then add the proxy entries itself rather than pipette.
+        # TODO: proxy on dest port not source port, and filter on dest port to only running services (less state to track
+        # in the port scan case).
         for table_id, match, instructions in (
                 # Learn TCP 4-tuple from coprocessor port/do inbound translation.
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP),
@@ -97,7 +99,7 @@ class Pipette(app_manager.RyuApp):
                 # Packets from coprocessor go to TCP-4 tuple inbound table.
                 (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, in_port=COPROPORT),
                  [parser.OFPInstructionGotoTable(1)]),
-                # Packets from fake interface go to TCP-3'd outbound table.
+                # Packets from fake interface go to TCP-4'd outbound table.
                 (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, in_port=FAKEPORT),
                  [parser.OFPInstructionGotoTable(2)]),
                 (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, in_port=FAKEPORT),
@@ -117,6 +119,7 @@ class Pipette(app_manager.RyuApp):
         msg = ev.msg
         datapath = msg.datapath
         in_port = msg.match['in_port']
+        # TODO: trim packet size to minimum.
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
         mods = []
