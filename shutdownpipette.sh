@@ -5,7 +5,7 @@ FAKEINT=fake0
 # OVS bridge name
 BR=copro0
 
-unction show_help()
+function show_help()
 {
     echo "pipette coprocessor shutdown (uses sudo)
 

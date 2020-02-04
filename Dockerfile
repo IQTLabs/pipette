@@ -1,5 +1,3 @@
-## Image name: faucet/faucet
-
 FROM faucet/python3:4.0.0
 
 COPY ./ /pipette-src/
