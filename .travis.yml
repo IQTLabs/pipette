@@ -6,5 +6,5 @@ services:
 cache:
   pip: true
 script:
-  - pip3 install -U -r test-requirements.txt && pylint -E *py && pytype *py
+  - pip3 install -U -r test-requirements.txt && pylint -E *py && pytype *py && PYTHONPATH=. coverage run test_pipette.py && coverage report pipette.py
   - docker build -f Dockerfile . -t anarkiwi/pipette
