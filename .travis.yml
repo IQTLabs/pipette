@@ -3,4 +3,4 @@ sudo: required
 cache:
   pip: true
 script:
-  - pylint -E *py && pytype *py
+  - pip3 install -U -r test-requirements.txt && pylint -E *py && pytype *py
