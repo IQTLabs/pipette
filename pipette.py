@@ -42,6 +42,7 @@ FAKECLIENTMAC = os.getenv('FAKECLIENTMAC', '0e:00:00:00:00:67')
 # VLAN to coprocess
 VLAN = int(os.getenv('VLAN', '2'))
 # IP address of fake services.
+# TODO: add IPv6 support
 NFVIP = ipaddress.ip_interface(os.getenv('NFVIP', '192.168.101.1/24'))
 # Idle timeout for translated flows (garbage collect)
 IDLE = 30
@@ -61,7 +62,7 @@ class Pipette(app_manager.RyuApp):
     def output_controller(self):
         return self.apply_actions([parser.OFPActionOutput(ofp.OFPP_CONTROLLER)])
 
-    @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
+    @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)  # pylint: disable=no-member
     def switch_features_handler(self, ev):
         datapath = ev.msg.datapath
         mods = []
@@ -111,7 +112,7 @@ class Pipette(app_manager.RyuApp):
                 instructions=instructions))
         self.send_mods(datapath, mods)
 
-    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
+    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)  # pylint: disable=no-member
     def _packet_in_handler(self, ev):
         msg = ev.msg
         datapath = msg.datapath
