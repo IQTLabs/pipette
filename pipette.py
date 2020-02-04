@@ -18,6 +18,7 @@
 
 import ipaddress
 import socket
+import os
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -31,17 +32,17 @@ from ryu.ofproto import ofproto_v1_3_parser as parser
 # OVS port facing coprocessor (expects packets with or without a tag from the configured VLAN)
 # Coprocessor only accepts packets with a VLAN tag.
 # TODO: add flows to handle packets from VLAN ACL with tag as well.
-COPROPORT = 1
+COPROPORT = int(os.getenv('COPROPORT', '1'))
 # OVS port facing fake services.
-FAKEPORT = 2
+FAKEPORT = int(os.getenv('FAKEPORT', '2'))
 # Fake interface must have this MAC.
-FAKESERVERMAC = '0e:00:00:00:00:66'
+FAKESERVERMAC = os.getenv('FAKESERVERMAC', '0e:00:00:00:00:66')
 # We will fake all coprocessed hosts as having this MAC.
-FAKECLIENTMAC = '0e:00:00:00:00:67'
+FAKECLIENTMAC = os.getenv('FAKECLIENTMAC', '0e:00:00:00:00:67')
 # VLAN to coprocess
-VLAN = 2
+VLAN = int(os.getenv('VLAN', '2'))
 # IP address of fake services.
-NFVIP = ipaddress.ip_interface('192.168.101.1/24')
+NFVIP = ipaddress.ip_interface(os.getenv('NFVIP', '192.168.101.1/24'))
 # Idle timeout for translated flows (garbage collect)
 IDLE = 30
 
