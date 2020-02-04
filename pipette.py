@@ -80,6 +80,9 @@ class Pipette(app_manager.RyuApp):
                 table_id=table_id,
                 priority=0,
                 instructions=[]))
+        # TODO: add entries for UDP
+        # TODO: use OVS actions=learn() for faster proxying (https://docs.openvswitch.org/en/latest/tutorials/ovs-advanced/)
+        # OVS could then add the proxy entries itself rather than pipette.
         for table_id, match, instructions in (
                 # Learn TCP 4-tuple from coprocessor port/do inbound translation.
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP),
