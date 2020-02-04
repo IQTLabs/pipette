@@ -12,6 +12,7 @@ NFVIP=192.168.101.1/24
 VLAN=2
 # interface that will be created for fake services to run on.
 FAKEINT=fake0
+DFILE=Dockerfile.pi
 
 ##
 # Optional config
@@ -47,5 +48,4 @@ for i in $COPROINT ovs$FAKEINT ; do
 done
 ovs-vsctl set-controller $BR tcp:127.0.0.1:$OF
 
-# Run pipette.
-ryu-manager pipette.py --ofp-tcp-listen-port $OF --verbose
+docker build -f $DFILE . -t anarkiwi/pipette && docker run -e NFVIP=$NFVIP -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLAN=$VLAN -p 127.0.0.1:$OF:6653 -ti anarkiwi/pipette
