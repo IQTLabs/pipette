@@ -16,7 +16,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import ipaddress
 import socket
 import os
@@ -26,7 +25,8 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ether
-from ryu.lib.packet import ethernet, ipv4, packet, arp, tcp
+from ryu.lib.packet import ethernet, ipv4, packet
+from ryu.ofproto import nicira_ext
 from ryu.ofproto import ofproto_v1_3 as ofp
 from ryu.ofproto import ofproto_v1_3_parser as parser
 
@@ -94,9 +94,19 @@ class Pipette(app_manager.RyuApp):
                  self.output_controller()),
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP),
                  self.output_controller()),
-                # Do outbound translation and also handle fake ARP to services on fake interface.
-                (2, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP),
-                 self.output_controller()),
+                # Program OVS to respond to ARP on fake port.
+                (2, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, arp_op=0x1),
+                 self.apply_actions([
+                     parser.NXActionRegMove(src_field='arp_tpa', dst_field='reg0', n_bits=32, src_ofs=0, dst_ofs=0),  # pylint: disable=no-member
+                     parser.NXActionRegLoad(value=0x2, dst='arp_op', ofs_nbits=nicira_ext.ofs_nbits(0, 2)),  # pylint: disable=no-member
+                     parser.NXActionRegMove(src_field='eth_src', dst_field='eth_dst', n_bits=48, src_ofs=0, dst_ofs=0),  # pylint: disable=no-member
+                     parser.NXActionRegMove(src_field='arp_sha', dst_field='arp_tha', n_bits=48, src_ofs=0, dst_ofs=0),  # pylint: disable=no-member
+                     parser.NXActionRegMove(src_field='arp_spa', dst_field='arp_tpa', n_bits=32, src_ofs=0, dst_ofs=0),  # pylint: disable=no-member
+                     parser.NXActionRegMove(src_field='reg0', dst_field='arp_spa', n_bits=32, src_ofs=0, dst_ofs=0),  # pylint: disable=no-member
+                     parser.OFPActionSetField(eth_src=str(FAKECLIENTMAC)),
+                     parser.OFPActionSetField(arp_sha=str(FAKECLIENTMAC)),
+                     parser.OFPActionOutput(ofp.OFPP_IN_PORT),
+                 ])),
                 # If coprocessor gives us a tagged packet, strip it.
                 (0, parser.OFPMatch(vlan_vid=(0x1000, 0x1000), in_port=COPROPORT),
                  self.apply_actions([parser.OFPActionPopVlan()]) + [parser.OFPInstructionGotoTable(1)]),
@@ -140,29 +150,6 @@ class Pipette(app_manager.RyuApp):
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
         mods = []
-        if in_port == FAKEPORT:
-            arp_req = pkt.get_protocol(arp.arp)
-            if not arp_req:
-                return
-            opcode = arp_req.opcode
-            # Reply to fake service, proxying real host.
-            if opcode == arp.ARP_REQUEST:
-                pkt = packet.Packet()
-                eth_header = ethernet.ethernet(FAKESERVERMAC, arp_req.src_mac, ether.ETH_TYPE_ARP)
-                pkt.add_protocol(eth_header)
-                arp_pkt = arp.arp(
-                    opcode=arp.ARP_REPLY,
-                    src_mac=str(FAKECLIENTMAC), dst_mac=FAKESERVERMAC,
-                    src_ip=arp_req.dst_ip, dst_ip=arp_req.src_ip)
-                pkt.add_protocol(arp_pkt)
-                pkt.serialize()
-                mod = parser.OFPPacketOut(
-                    datapath=datapath,
-                    buffer_id=ofp.OFP_NO_BUFFER,
-                    in_port=ofp.OFPP_CONTROLLER,
-                    actions=[parser.OFPActionOutput(FAKEPORT)],
-                    data=pkt.data)
-                mods.append(mod)
         if in_port == COPROPORT:
             ip4 = pkt.get_protocol(ipv4.ipv4)
             if not ip4:
@@ -186,7 +173,7 @@ class Pipette(app_manager.RyuApp):
                 table_id=1,
                 priority=priority,
                 match=match,
-                idle_timeout=IDLE,
+                hard_timeout=IDLE,
                 instructions=self.apply_actions(actions)))
             # Add outbound to coprocessor translation entry.
             match = parser.OFPMatch(
