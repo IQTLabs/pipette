@@ -144,7 +144,7 @@ class Pipette(app_manager.RyuApp):
                 pkt = packet.Packet()
                 eth_header = ethernet.ethernet(FAKESERVERMAC, arp_req.src_mac, ether.ETH_TYPE_ARP)
                 pkt.add_protocol(eth_header)
-                src_ipv4_mac = self.mac_from_ipv4_src(arp_req.dst_ip)
+                src_ipv4_mac = self.mac_from_ipv4_src(ipaddress.IPv4Address(arp_req.dst_ip))
                 arp_pkt = arp.arp(
                     opcode=arp.ARP_REPLY,
                     src_mac=str(src_ipv4_mac), dst_mac=FAKESERVERMAC,
