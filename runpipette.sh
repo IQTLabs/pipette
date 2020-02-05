@@ -1,26 +1,6 @@
 #!/bin/bash
 
-# interface connected to FAUCET coprocessor port.
-COPROINT=enx0023565c8859
-# address fake services will be run on (will be proxied from real IPs)
-NFVIP=192.168.101.1/24
-# FAUCET VLAN where fake services will appear.
-VLAN=2
-# interface that will be created for fake services to run on.
-FAKEINT=fake0
-DFILE=Dockerfile.pi
-
-##
-# Optional config
-##
-
-# Reserved MAC addresses for fake services to use to talk to clients.
-FAKESERVERMAC=0e:00:00:00:00:66
-FAKECLIENTMAC=0e:00:00:00:00:67
-# OVS bridge name
-BR=copro0
-# pipette OF port
-OF=6699
+source ./pipetteconf.sh
 
 function show_help()
 {
@@ -30,7 +10,7 @@ function show_help()
     Options:
       -c,  coproint      interface to send coprocessed traffic to
       -f,  fakeint       interface created for fake services to run on
-      -m,  fakemac       fake mack for fake interface
+      -m,  fakemac       fake mac for fake interface
       -fch, fakeclientmac fake client mac address
       -i,  fakeip        fake ip for fake services(will be proxied from real IPS)
       -h,  help          print this help
@@ -81,39 +61,30 @@ function check_args()
 
 if [ $# -gt 0 ]; then
     check_args "$@"
-else # print help
-    show_help
-    exit
 fi
 
 # Configure pipette's OVS switch.
 # Remove all IP addresses, disable IPv6.
-echo "Configuring OVS switch for pippette"
+echo "Configuring OVS switch for pipette"
 sudo ip link add dev $FAKEINT type veth peer name ovs$FAKEINT
-echo "removing IPs"
-for i in $COPROINT $FAKEINT ovs$FAKEINT ovs-system ; do
-  if ifconfig $i | grep inet ; then
-    sudo ip addr flush $i
-  fi
+sudo ip link set dev $FAKEINT address $FAKESERVERMAC
+echo "Removing IPs"
+for i in $COPROINT $FAKEINT ovs$FAKEINT ; do
+  sudo ip addr flush dev $i
+  sudo ip link set $i up
 done
-echo "Configuring interfaces"
-sudo ifconfig $COPROINT up
-sudo ifconfig ovs$FAKEINT up
-sudo ifconfig $FAKEINT hw ether $FAKESERVERMAC $FAKESERVERMAC up
+sudo ip addr add $NFVIP dev $FAKEINT
 
-if ifconfig $BR; then
-  echo "Removing existing OVS bridge $BR"
-  sudo ovs-vsctl del-br $BR
-fi
+sudo ovs-vsctl --if-exists del-br $BR
 
 echo "Configuring bridge"
 sudo ovs-vsctl add-br $BR
-sudo ovs-ofctl del-flows $BR
-echo "adding flows"
+echo "Adding ports"
 for i in $COPROINT ovs$FAKEINT ; do
   sudo ovs-vsctl add-port $BR $i
 done
-echo "setting controller"
+echo "Setting controller"
 sudo ovs-vsctl set-controller $BR tcp:127.0.0.1:$OF
 
-docker build -f $DFILE . -t anarkiwi/pipette && docker run -e NFVIP=$NFVIP -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLAN=$VLAN -p 127.0.0.1:$OF:6653 -ti anarkiwi/pipette
+# docker build -f $DFILE . -t anarkiwi/pipette && docker run -e NFVIP=$NFVIP -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLAN=$VLAN -p 127.0.0.1:$OF:6653 -ti anarkiwi/pipette
+ryu-manager --verbose --ofp-tcp-listen-port $OF pipette.py
