@@ -1,6 +1,7 @@
 # interface connected to FAUCET coprocessor port.
 COPROINT=enx0023565c8859
 # address fake services will be run on (will be proxied from real IPs)
+# must have the same prefix width as real network.
 NFVIP=192.168.101.1/24
 # FAUCET VLAN where fake services will appear.
 VLAN=2
