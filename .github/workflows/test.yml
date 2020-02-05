@@ -19,11 +19,11 @@ jobs:
         export PATH=/home/runner/.local/bin:$PATH
         pylint -E *py && \
         pytype *py && \
-        PYTHONPATH=. coverage run test_pipette.py && \
-        coverage report pipette.py
+        PYTHONPATH=. coverage run test_pipette.py
     - name: docker-test
       run: |
         docker build -f Dockerfile -t cyberreboot/pipette .
+    - name: Upload coverage to Codecov
     - uses: codecov/codecov-action@v1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
