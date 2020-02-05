@@ -83,6 +83,9 @@ class Pipette(app_manager.RyuApp):
                 table_id=table_id,
                 priority=0,
                 instructions=[]))
+        copro_out_actions = self.apply_actions([
+            parser.OFPActionPushVlan(ether.ETH_TYPE_8021Q),
+            parser.OFPActionSetField(vlan_vid=(VLAN | ofp.OFPVID_PRESENT))])
         # TODO: use OVS actions=learn() for faster proxying (https://docs.openvswitch.org/en/latest/tutorials/ovs-advanced/)
         # OVS could then add the proxy entries itself rather than pipette.
         for table_id, match, instructions in (
@@ -104,9 +107,9 @@ class Pipette(app_manager.RyuApp):
                  [parser.OFPInstructionGotoTable(1)]),
                 # Packets from fake interface go outbound table.
                 (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP, in_port=FAKEPORT),
-                 [parser.OFPInstructionGotoTable(2)]),
+                 copro_out_actions + [parser.OFPInstructionGotoTable(2)]),
                 (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP, in_port=FAKEPORT),
-                 [parser.OFPInstructionGotoTable(2)]),
+                 copro_out_actions + [parser.OFPInstructionGotoTable(2)]),
                 (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, eth_src=FAKESERVERMAC, in_port=FAKEPORT),
                  [parser.OFPInstructionGotoTable(2)]),
             ):
@@ -194,8 +197,6 @@ class Pipette(app_manager.RyuApp):
                 parser.OFPActionSetField(eth_dst=eth.src),
                 parser.OFPActionSetField(ipv4_src=ipv4_dst),
                 parser.OFPActionSetField(ipv4_dst=ipv4_src),
-                parser.OFPActionPushVlan(ether.ETH_TYPE_8021Q),
-                parser.OFPActionSetField(vlan_vid=(VLAN | ofp.OFPVID_PRESENT)),
                 parser.OFPActionOutput(COPROPORT)]
             mods.append(parser.OFPFlowMod(
                 datapath=datapath,
