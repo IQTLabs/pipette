@@ -20,8 +20,8 @@ jobs:
         pylint -E *py && \
         pytype *py && \
         PYTHONPATH=. coverage run test_pipette.py && \
-        coverage report && \
-        coverage xml
+        coverage report pipette.py && \
+        coverage xml pipette.py
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v1
       with:
