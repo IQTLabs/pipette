@@ -16,10 +16,11 @@ jobs:
         pip3 install -U pip && \
         pip3 install codecov && \
         pip3 install -U -r test-requirements.txt && \
-        /home/runner/.local/bin/pylint -E *py && \
-        /home/runner/.local/bin/pytype *py && \
-        PYTHONPATH=. /home/runner/.local/bin/coverage run test_pipette.py && \
-        /home/runner/.local/bin/coverage report pipette.py
+        export PATH=/home/runner/.local/bin:$PATH
+        pylint -E *py && \
+        pytype *py && \
+        PYTHONPATH=. coverage run test_pipette.py && \
+        coverage report pipette.py
     - name: docker-test
       run: |
         docker build -f Dockerfile -t cyberreboot/pipette .
