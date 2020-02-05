@@ -16,9 +16,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import ipaddress
 import socket
 import os
+import netaddr
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -36,16 +38,16 @@ COPROPORT = int(os.getenv('COPROPORT', '1'))
 # OVS port facing fake services.
 FAKEPORT = int(os.getenv('FAKEPORT', '2'))
 # Fake interface must have this MAC.
-FAKESERVERMAC = os.getenv('FAKESERVERMAC', '0e:00:00:00:00:66')
+FAKESERVERMAC = netaddr.EUI(os.getenv('FAKESERVERMAC', '0e:00:00:00:00:66'), dialect=netaddr.mac_unix)
 # We will fake all coprocessed hosts as having this MAC.
-FAKECLIENTMAC = os.getenv('FAKECLIENTMAC', '0e:00:00:00:00:67')
+FAKECLIENTMAC = netaddr.EUI(os.getenv('FAKECLIENTMAC', '0e:00:00:00:00:67'), dialect=netaddr.mac_unix)
 # VLAN to coprocess
 VLAN = int(os.getenv('VLAN', '2'))
 # IP address of fake services.
 # TODO: add IPv6 support
 NFVIP = ipaddress.ip_interface(os.getenv('NFVIP', '192.168.101.1/24'))
 # Idle timeout for translated flows (garbage collect)
-IDLE = 30
+IDLE = 300
 
 
 class Pipette(app_manager.RyuApp):
@@ -81,12 +83,13 @@ class Pipette(app_manager.RyuApp):
                 table_id=table_id,
                 priority=0,
                 instructions=[]))
-        # TODO: add entries for UDP
         # TODO: use OVS actions=learn() for faster proxying (https://docs.openvswitch.org/en/latest/tutorials/ovs-advanced/)
         # OVS could then add the proxy entries itself rather than pipette.
         for table_id, match, instructions in (
-                # Learn TCP 4-tuple from coprocessor port/do inbound translation.
+                # Learn from coprocessor port/do inbound translation.
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP),
+                 self.output_controller()),
+                (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP),
                  self.output_controller()),
                 # Do outbound translation and also handle fake ARP to services on fake interface.
                 (2, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP),
@@ -94,13 +97,17 @@ class Pipette(app_manager.RyuApp):
                 # If coprocessor gives us a tagged packet, strip it.
                 (0, parser.OFPMatch(vlan_vid=(0x1000, 0x1000), in_port=COPROPORT),
                  self.apply_actions([parser.OFPActionPopVlan()]) + [parser.OFPInstructionGotoTable(1)]),
-                # Packets from coprocessor go to TCP-4 tuple inbound table.
-                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, in_port=COPROPORT),
+                # Packets from coprocessor go to tuple inbound table.
+                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP, in_port=COPROPORT),
                  [parser.OFPInstructionGotoTable(1)]),
-                # Packets from fake interface go to TCP-3'd outbound table.
-                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, in_port=FAKEPORT),
+                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP, in_port=COPROPORT),
+                 [parser.OFPInstructionGotoTable(1)]),
+                # Packets from fake interface go outbound table.
+                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP, in_port=FAKEPORT),
                  [parser.OFPInstructionGotoTable(2)]),
-                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, in_port=FAKEPORT),
+                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP, in_port=FAKEPORT),
+                 [parser.OFPInstructionGotoTable(2)]),
+                (0, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, eth_src=FAKESERVERMAC, in_port=FAKEPORT),
                  [parser.OFPInstructionGotoTable(2)]),
             ):
             mods.append(parser.OFPFlowMod(
@@ -128,11 +135,11 @@ class Pipette(app_manager.RyuApp):
             # Reply to fake service, proxying real host.
             if opcode == arp.ARP_REQUEST:
                 pkt = packet.Packet()
-                eth_header = ethernet.ethernet(FAKESERVERMAC, FAKECLIENTMAC, ether.ETH_TYPE_ARP)
+                eth_header = ethernet.ethernet(FAKESERVERMAC, arp_req.src_mac, ether.ETH_TYPE_ARP)
                 pkt.add_protocol(eth_header)
                 arp_pkt = arp.arp(
                     opcode=arp.ARP_REPLY,
-                    src_mac=FAKECLIENTMAC, dst_mac=FAKESERVERMAC,
+                    src_mac=arp_req.src_mac, dst_mac=FAKESERVERMAC,
                     src_ip=arp_req.dst_ip, dst_ip=arp_req.src_ip)
                 pkt.add_protocol(arp_pkt)
                 pkt.serialize()
@@ -155,14 +162,16 @@ class Pipette(app_manager.RyuApp):
             ipv4_dst = ipaddress.IPv4Address(ip4.dst)
             src_ipv4_nat = ipaddress.IPv4Address(
                 (int(ipv4_src) & int(NFVIP.hostmask)) | int(NFVIP.network.network_address))
+            low_ipv4_byte = int(ipv4_src) & (2**(NFVIP.network.max_prefixlen - NFVIP.network.prefixlen) - 1)
+            src_ipv4_mac = copy.copy(FAKECLIENTMAC)
+            src_ipv4_mac[4] = low_ipv4_byte
             # Add inbound from coprocessor translation entry.
             match = parser.OFPMatch(
                 eth_type=ether.ETH_TYPE_IP, eth_src=eth.src,
-                ipv4_dst=ipv4_dst, ip_proto=socket.IPPROTO_TCP,
-                tcp_dst=tcp4.dst_port, tcp_src=tcp4.src_port)
+                ipv4_dst=ipv4_dst, ip_proto=socket.IPPROTO_TCP)
             actions = [
-                parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
-                parser.OFPActionSetField(eth_dst=FAKESERVERMAC),
+                parser.OFPActionSetField(eth_src=str(src_ipv4_mac)),
+                parser.OFPActionSetField(eth_dst=str(FAKESERVERMAC)),
                 parser.OFPActionSetField(ipv4_src=src_ipv4_nat),
                 parser.OFPActionSetField(ipv4_dst=str(NFVIP.ip)),
                 parser.OFPActionOutput(FAKEPORT)]
@@ -176,9 +185,7 @@ class Pipette(app_manager.RyuApp):
                 instructions=self.apply_actions(actions)))
             # Add outbound to coprocessor translation entry.
             match = parser.OFPMatch(
-                eth_type=ether.ETH_TYPE_IP,
-                ipv4_dst=src_ipv4_nat, ip_proto=socket.IPPROTO_TCP,
-                tcp_src=tcp4.dst_port, tcp_dst=tcp4.src_port)
+                eth_type=ether.ETH_TYPE_IP, eth_dst=str(src_ipv4_mac), ipv4_dst=src_ipv4_nat)
             actions = [
                 parser.OFPActionSetField(eth_src=eth.dst),
                 parser.OFPActionSetField(eth_dst=eth.src),
