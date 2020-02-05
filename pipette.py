@@ -45,7 +45,7 @@ FAKECLIENTMAC = netaddr.EUI(os.getenv('FAKECLIENTMAC', '0e:00:00:00:00:67'), dia
 VLAN = int(os.getenv('VLAN', '2'))
 # IP address of fake services.
 # TODO: add IPv6 support
-NFVIP = ipaddress.ip_interface(os.getenv('NFVIP', '192.168.101.1/24'))
+NFVIP = ipaddress.ip_interface(os.getenv('NFVIP', '10.10.0.1/16'))
 # Idle timeout for translated flows (garbage collect)
 IDLE = 300
 
@@ -120,11 +120,21 @@ class Pipette(app_manager.RyuApp):
         self.send_mods(datapath, mods)
 
     def mac_from_ipv4_src(self, ipv4_src):
-        low_ipv4_byte = int(ipv4_src) & (2**(NFVIP.network.max_prefixlen - NFVIP.network.prefixlen) - 1)
+        mask = 2**16 - 1
+        low_ipv4_bytes = int(ipv4_src) & mask
+        low_ipv4_byte = low_ipv4_bytes & 0xff
+        high_ipv4_byte = low_ipv4_bytes & 0xff00
         src_ipv4_mac = copy.copy(FAKECLIENTMAC)
         src_ipv4_mac[4] = low_ipv4_byte
+        src_ipv4_mac[3] = high_ipv4_byte
         return src_ipv4_mac
 
+    def src_ipv4_nat(self, ipv4_src, ipv4_dst):
+        mask = 2**8 - 1
+        src_low_ipv4_byte = int(ipv4_src) & mask
+        dst_low_ipv4_byte = int(ipv4_dst) & mask
+        src_ipv4_nat = ipaddress.IPv4Address('10.10.%u.%u' % (src_low_ipv4_byte, dst_low_ipv4_byte))
+        return src_ipv4_nat
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)  # pylint: disable=no-member
     def _packet_in_handler(self, ev):
@@ -168,8 +178,7 @@ class Pipette(app_manager.RyuApp):
             priority = 2
             ipv4_src = ipaddress.IPv4Address(ip4.src)
             ipv4_dst = ipaddress.IPv4Address(ip4.dst)
-            src_ipv4_nat = ipaddress.IPv4Address(
-                (int(ipv4_src) & int(NFVIP.hostmask)) | int(NFVIP.network.network_address))
+            src_ipv4_nat = self.src_ipv4_nat(ipv4_src, ipv4_dst)
             src_ipv4_mac = self.mac_from_ipv4_src(ipv4_src)
             # Add inbound from coprocessor translation entry.
             match = parser.OFPMatch(
