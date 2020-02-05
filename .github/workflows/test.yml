@@ -24,6 +24,6 @@ jobs:
       run: |
         docker build -f Dockerfile -t cyberreboot/pipette .
     - name: Upload coverage to Codecov
-    - uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
