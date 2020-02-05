@@ -1,9 +1,6 @@
-# interface connected to FAUCET coprocessor port.
-COPROINT=enp0s3
-# interface that will be created for fake services to run on.
-FAKEINT=fake0
-# OVS bridge name
-BR=copro0
+#!/bin/bash
+
+source ./pipetteconf.sh
 
 function show_help()
 {
@@ -44,14 +41,9 @@ function check_args()
 
 if [ $# -gt 0 ]; then
     check_args "$@"
-else # print help
-    show_help
-    exit
 fi
 
-
-# stop pipette.
-sudo pkill -9 ryu-manager
+sudo docker stop pipette
 
 #delete bridge
 sudo ovs-vsctl del-br $BR 
