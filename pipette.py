@@ -119,6 +119,13 @@ class Pipette(app_manager.RyuApp):
                 instructions=instructions))
         self.send_mods(datapath, mods)
 
+    def mac_from_ipv4_src(self, ipv4_src):
+        low_ipv4_byte = int(ipv4_src) & (2**(NFVIP.network.max_prefixlen - NFVIP.network.prefixlen) - 1)
+        src_ipv4_mac = copy.copy(FAKECLIENTMAC)
+        src_ipv4_mac[4] = low_ipv4_byte
+        return src_ipv4_mac
+
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)  # pylint: disable=no-member
     def _packet_in_handler(self, ev):
         msg = ev.msg
@@ -137,9 +144,10 @@ class Pipette(app_manager.RyuApp):
                 pkt = packet.Packet()
                 eth_header = ethernet.ethernet(FAKESERVERMAC, arp_req.src_mac, ether.ETH_TYPE_ARP)
                 pkt.add_protocol(eth_header)
+                src_ipv4_mac = self.mac_from_ipv4_src(arp_req.dst_ip)
                 arp_pkt = arp.arp(
                     opcode=arp.ARP_REPLY,
-                    src_mac=arp_req.src_mac, dst_mac=FAKESERVERMAC,
+                    src_mac=str(src_ipv4_mac), dst_mac=FAKESERVERMAC,
                     src_ip=arp_req.dst_ip, dst_ip=arp_req.src_ip)
                 pkt.add_protocol(arp_pkt)
                 pkt.serialize()
@@ -162,9 +170,7 @@ class Pipette(app_manager.RyuApp):
             ipv4_dst = ipaddress.IPv4Address(ip4.dst)
             src_ipv4_nat = ipaddress.IPv4Address(
                 (int(ipv4_src) & int(NFVIP.hostmask)) | int(NFVIP.network.network_address))
-            low_ipv4_byte = int(ipv4_src) & (2**(NFVIP.network.max_prefixlen - NFVIP.network.prefixlen) - 1)
-            src_ipv4_mac = copy.copy(FAKECLIENTMAC)
-            src_ipv4_mac[4] = low_ipv4_byte
+            src_ipv4_mac = self.mac_from_ipv4_src(ipv4_src)
             # Add inbound from coprocessor translation entry.
             match = parser.OFPMatch(
                 eth_type=ether.ETH_TYPE_IP, eth_src=eth.src,
