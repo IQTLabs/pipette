@@ -11,14 +11,18 @@ jobs:
     - uses: actions/checkout@v2
     - name: test
       run: |
+        sudo apt-get update && \
+        sudo apt-get instal -y python3-dev && \
         pip3 install -U pip && \
         pip3 install codecov && \
         pip3 install -U -r test-requirements.txt && \
         pylint -E *py && \
         pytype *py && \
         PYTHONPATH=. coverage run test_pipette.py && \
-        coverage report pipette.py && \
-        /home/runner/.local/bin/codecov
+        coverage report pipette.py
     - name: docker-test
       run: |
         docker build -f Dockerfile -t cyberreboot/pipette .
+    - uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
