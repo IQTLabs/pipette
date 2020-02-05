@@ -1,0 +1,24 @@
+name: test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: test
+      run: |
+        pip3 install -U pip && \
+        pip3 install codecov && \
+        pip3 install -U -r test-requirements.txt && \
+        pylint -E *py && \
+        pytype *py && \
+        PYTHONPATH=. coverage run test_pipette.py && \
+        coverage report pipette.py
+        /home/runner/.local/bin/codecov
+     - name: docker-test
+       run: |
+         docker build -f Dockerfile -t cyberreboot/pipette .

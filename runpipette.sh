@@ -86,5 +86,5 @@ done
 echo "Setting controller"
 sudo ovs-vsctl set-controller $BR tcp:127.0.0.1:$OF
 
-# docker build -f $DFILE . -t anarkiwi/pipette && docker run -e NFVIP=$NFVIP -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLAN=$VLAN -p 127.0.0.1:$OF:6653 -ti anarkiwi/pipette
+# docker build -f $DFILE . -t cyberreboot/pipette && docker run -e NFVIP=$NFVIP -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLAN=$VLAN -p 127.0.0.1:$OF:6653 -ti cyberreboot/pipette
 ryu-manager --verbose --ofp-tcp-listen-port $OF pipette.py
