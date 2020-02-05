@@ -133,6 +133,7 @@ class Pipette(app_manager.RyuApp):
         msg = ev.msg
         datapath = msg.datapath
         in_port = msg.match['in_port']
+        # TODO: trim packet size to minimum.
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
         mods = []
