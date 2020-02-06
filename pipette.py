@@ -16,17 +16,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import ipaddress
 import socket
 import os
 import netaddr
 from ryu.base import app_manager
 from ryu.controller import ofp_event
-from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
+from ryu.controller.handler import CONFIG_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ether
-from ryu.lib.packet import ethernet, ipv4, packet, arp, tcp
+from ryu.ofproto import nicira_ext
 from ryu.ofproto import ofproto_v1_3 as ofp
 from ryu.ofproto import ofproto_v1_3_parser as parser
 
@@ -58,11 +57,62 @@ class Pipette(app_manager.RyuApp):
         for mod in mods:
             datapath.send_msg(mod)
 
-    def apply_actions(self, actions):
+
+    @staticmethod
+    def apply_actions(actions):
         return [parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)]
 
-    def output_controller(self):
-        return self.apply_actions([parser.OFPActionOutput(ofp.OFPP_CONTROLLER)])
+
+    def nat_flows(self):
+        # configure automatic learning.
+        nat_base = NFVIP.network.network_address
+        # pylint: disable=no-member
+        return self.apply_actions([
+            # first, calculate src NAT address, leave in reg0.
+            parser.NXActionRegMove(src_field='ipv4_src', dst_field='reg0', n_bits=32, src_ofs=0, dst_ofs=0),
+            parser.NXActionRegLoad(value=((int(nat_base) & 0xffff0000) >> 16), dst='reg0', ofs_nbits=nicira_ext.ofs_nbits(16, 31)),
+            parser.NXActionRegMove(src_field='reg0', dst_field='reg0', n_bits=8, src_ofs=0, dst_ofs=8),
+            parser.NXActionRegMove(src_field='ipv4_dst', dst_field='reg0', n_bits=8, src_ofs=0, dst_ofs=0),
+            # we have to load output port numbers into reg1 and reg2 because NXFlowSpecOutput() won't take a literal.
+            parser.NXActionRegLoad(value=FAKEPORT, dst='reg1', ofs_nbits=nicira_ext.ofs_nbits(0, 2)),
+            parser.NXActionRegLoad(value=COPROPORT, dst='reg2', ofs_nbits=nicira_ext.ofs_nbits(0, 2)),
+            # now program an inbound flow to perform NAT.
+            parser.NXActionLearn(
+                table_id=1,
+                priority=2,
+                hard_timeout=IDLE,
+                specs=[
+                    parser.NXFlowSpecMatch(src=ether.ETH_TYPE_IP, dst=('eth_type_nxm', 0), n_bits=16),
+                    parser.NXFlowSpecMatch(src=('ipv4_src_nxm', 0), dst=('ipv4_src_nxm', 0), n_bits=32),
+                    parser.NXFlowSpecMatch(src=('ipv4_dst_nxm', 0), dst=('ipv4_dst_nxm', 0), n_bits=32),
+                    parser.NXFlowSpecLoad(src=('reg0', 0), dst=('ipv4_src_nxm', 0), n_bits=32),
+                    parser.NXFlowSpecLoad(src=int(NFVIP.ip), dst=('ipv4_dst_nxm', 0), n_bits=32),
+                    parser.NXFlowSpecLoad(src=int(FAKECLIENTMAC), dst=('eth_src_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecLoad(src=int(FAKESERVERMAC), dst=('eth_dst_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecOutput(src=('reg1', 0), dst='', n_bits=2),
+                ]),
+            # now program outbound an outbound flow.
+            parser.NXActionLearn(
+                table_id=2,
+                priority=2,
+                idle_timeout=IDLE,
+                specs=[
+                    parser.NXFlowSpecMatch(src=ether.ETH_TYPE_IP, dst=('eth_type_nxm', 0), n_bits=16),
+                    parser.NXFlowSpecMatch(src=int(NFVIP.ip), dst=('ipv4_src_nxm', 0), n_bits=32),
+                    parser.NXFlowSpecMatch(src=('reg0', 0), dst=('ipv4_dst_nxm', 0), n_bits=32),
+                    parser.NXFlowSpecLoad(src=('eth_src_nxm', 0), dst=('eth_dst_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecLoad(src=('eth_dst_nxm', 0), dst=('eth_src_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecLoad(src=('ipv4_src_nxm', 0), dst=('ipv4_dst_nxm', 0), n_bits=32),
+                    parser.NXFlowSpecLoad(src=('ipv4_dst_nxm', 0), dst=('ipv4_src_nxm', 0), n_bits=32),
+                    parser.NXFlowSpecOutput(src=('reg2', 0), dst='', n_bits=2),
+                ]),
+            # now that future flows are programmed, handle the packet we have.
+            parser.OFPActionSetField(eth_src=str(FAKECLIENTMAC)),
+            parser.OFPActionSetField(eth_dst=str(FAKESERVERMAC)),
+            parser.NXActionRegMove(src_field='reg0', dst_field='ipv4_src', n_bits=32, src_ofs=0, dst_ofs=0),
+            parser.OFPActionSetField(ipv4_dst=str(NFVIP.ip)),
+            parser.OFPActionOutput(FAKEPORT)])
+
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)  # pylint: disable=no-member
     def switch_features_handler(self, ev):
@@ -86,17 +136,27 @@ class Pipette(app_manager.RyuApp):
         copro_out_actions = self.apply_actions([
             parser.OFPActionPushVlan(ether.ETH_TYPE_8021Q),
             parser.OFPActionSetField(vlan_vid=(VLAN | ofp.OFPVID_PRESENT))])
-        # TODO: use OVS actions=learn() for faster proxying (https://docs.openvswitch.org/en/latest/tutorials/ovs-advanced/)
         # OVS could then add the proxy entries itself rather than pipette.
         for table_id, match, instructions in (
                 # Learn from coprocessor port/do inbound translation.
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP),
-                 self.output_controller()),
+                 self.nat_flows()),
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP),
-                 self.output_controller()),
-                # Do outbound translation and also handle fake ARP to services on fake interface.
-                (2, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP),
-                 self.output_controller()),
+                 self.nat_flows()),
+                # Program OVS to respond to ARP on fake port.
+                (2, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, arp_op=0x1),
+                 # pylint: disable=no-member
+                 self.apply_actions([
+                     parser.NXActionRegMove(src_field='arp_tpa', dst_field='reg0', n_bits=32, src_ofs=0, dst_ofs=0),
+                     parser.NXActionRegLoad(value=0x2, dst='arp_op', ofs_nbits=nicira_ext.ofs_nbits(0, 2)),
+                     parser.NXActionRegMove(src_field='eth_src', dst_field='eth_dst', n_bits=48, src_ofs=0, dst_ofs=0),
+                     parser.NXActionRegMove(src_field='arp_sha', dst_field='arp_tha', n_bits=48, src_ofs=0, dst_ofs=0),
+                     parser.NXActionRegMove(src_field='arp_spa', dst_field='arp_tpa', n_bits=32, src_ofs=0, dst_ofs=0),
+                     parser.NXActionRegMove(src_field='reg0', dst_field='arp_spa', n_bits=32, src_ofs=0, dst_ofs=0),
+                     parser.OFPActionSetField(eth_src=str(FAKECLIENTMAC)),
+                     parser.OFPActionSetField(arp_sha=str(FAKECLIENTMAC)),
+                     parser.OFPActionOutput(ofp.OFPP_IN_PORT),
+                 ])),
                 # If coprocessor gives us a tagged packet, strip it.
                 (0, parser.OFPMatch(vlan_vid=(0x1000, 0x1000), in_port=COPROPORT),
                  self.apply_actions([parser.OFPActionPopVlan()]) + [parser.OFPInstructionGotoTable(1)]),
@@ -120,90 +180,4 @@ class Pipette(app_manager.RyuApp):
                 priority=1,
                 match=match,
                 instructions=instructions))
-        self.send_mods(datapath, mods)
-
-    def src_ipv4_nat(self, ipv4_src, ipv4_dst):
-        mask = 2**8 - 1
-        src_low_ipv4_byte = int(ipv4_src) & mask
-        dst_low_ipv4_byte = int(ipv4_dst) & mask
-        nat_packed = NFVIP.network.network_address.packed
-        nat_packed = nat_packed[:2] + bytes([src_low_ipv4_byte, dst_low_ipv4_byte])
-        src_ipv4_nat = ipaddress.IPv4Address(nat_packed)
-        return src_ipv4_nat
-
-    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)  # pylint: disable=no-member
-    def _packet_in_handler(self, ev):
-        msg = ev.msg
-        datapath = msg.datapath
-        in_port = msg.match['in_port']
-        # TODO: trim packet size to minimum.
-        pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocols(ethernet.ethernet)[0]
-        mods = []
-        if in_port == FAKEPORT:
-            arp_req = pkt.get_protocol(arp.arp)
-            if not arp_req:
-                return
-            opcode = arp_req.opcode
-            # Reply to fake service, proxying real host.
-            if opcode == arp.ARP_REQUEST:
-                pkt = packet.Packet()
-                eth_header = ethernet.ethernet(FAKESERVERMAC, arp_req.src_mac, ether.ETH_TYPE_ARP)
-                pkt.add_protocol(eth_header)
-                arp_pkt = arp.arp(
-                    opcode=arp.ARP_REPLY,
-                    src_mac=str(FAKECLIENTMAC), dst_mac=FAKESERVERMAC,
-                    src_ip=arp_req.dst_ip, dst_ip=arp_req.src_ip)
-                pkt.add_protocol(arp_pkt)
-                pkt.serialize()
-                mod = parser.OFPPacketOut(
-                    datapath=datapath,
-                    buffer_id=ofp.OFP_NO_BUFFER,
-                    in_port=ofp.OFPP_CONTROLLER,
-                    actions=[parser.OFPActionOutput(FAKEPORT)],
-                    data=pkt.data)
-                mods.append(mod)
-        if in_port == COPROPORT:
-            ip4 = pkt.get_protocol(ipv4.ipv4)
-            if not ip4:
-                return
-            priority = 2
-            ipv4_src = ipaddress.IPv4Address(ip4.src)
-            ipv4_dst = ipaddress.IPv4Address(ip4.dst)
-            src_ipv4_nat = self.src_ipv4_nat(ipv4_src, ipv4_dst)
-            # Add inbound from coprocessor translation entry.
-            match = parser.OFPMatch(
-                eth_type=ether.ETH_TYPE_IP, ipv4_src=ipv4_src, ipv4_dst=ipv4_dst)
-            actions = [
-                parser.OFPActionSetField(eth_src=str(FAKECLIENTMAC)),
-                parser.OFPActionSetField(eth_dst=str(FAKESERVERMAC)),
-                parser.OFPActionSetField(ipv4_src=src_ipv4_nat),
-                parser.OFPActionSetField(ipv4_dst=str(NFVIP.ip)),
-                parser.OFPActionOutput(FAKEPORT)]
-            mods.append(parser.OFPFlowMod(
-                datapath=datapath,
-                command=ofp.OFPFC_ADD,
-                table_id=1,
-                priority=priority,
-                match=match,
-                idle_timeout=IDLE,
-                instructions=self.apply_actions(actions)))
-            # Add outbound to coprocessor translation entry.
-            match = parser.OFPMatch(
-                eth_type=ether.ETH_TYPE_IP, eth_dst=FAKECLIENTMAC,
-                ipv4_src=str(NFVIP.ip), ipv4_dst=src_ipv4_nat)
-            actions = [
-                parser.OFPActionSetField(eth_src=eth.dst),
-                parser.OFPActionSetField(eth_dst=eth.src),
-                parser.OFPActionSetField(ipv4_src=ipv4_dst),
-                parser.OFPActionSetField(ipv4_dst=ipv4_src),
-                parser.OFPActionOutput(COPROPORT)]
-            mods.append(parser.OFPFlowMod(
-                datapath=datapath,
-                command=ofp.OFPFC_ADD,
-                table_id=2,
-                priority=priority,
-                match=match,
-                idle_timeout=IDLE,
-                instructions=self.apply_actions(actions)))
         self.send_mods(datapath, mods)
