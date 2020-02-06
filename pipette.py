@@ -61,9 +61,6 @@ class Pipette(app_manager.RyuApp):
     def apply_actions(self, actions):
         return [parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)]
 
-    def output_controller(self):
-        return self.apply_actions([parser.OFPActionOutput(ofp.OFPP_CONTROLLER)])
-
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)  # pylint: disable=no-member
     def switch_features_handler(self, ev):
         datapath = ev.msg.datapath
@@ -83,6 +80,18 @@ class Pipette(app_manager.RyuApp):
                 table_id=table_id,
                 priority=0,
                 instructions=[]))
+        nat_base = NFVIP.network.network_address
+        # preemptively send packets to fake.
+        learn_out_actions = self.apply_actions([
+            parser.OFPActionOutput(ofp.OFPP_CONTROLLER),
+            parser.OFPActionSetField(eth_src=str(FAKECLIENTMAC)),
+            parser.OFPActionSetField(eth_dst=str(FAKESERVERMAC)),
+            # Implement source NAT.
+            parser.NXActionRegLoad(value=((int(nat_base) & 0xffff0000) >> 16), dst='ipv4_src', ofs_nbits=nicira_ext.ofs_nbits(16, 31)),
+            parser.NXActionRegMove(src_field='ipv4_src', dst_field='ipv4_src', n_bits=8, src_ofs=0, dst_ofs=8),
+            parser.NXActionRegMove(src_field='ipv4_dst', dst_field='ipv4_src', n_bits=8, src_ofs=0, dst_ofs=0),
+            parser.OFPActionSetField(ipv4_dst=str(NFVIP.ip)),
+            parser.OFPActionOutput(FAKEPORT)])
         copro_out_actions = self.apply_actions([
             parser.OFPActionPushVlan(ether.ETH_TYPE_8021Q),
             parser.OFPActionSetField(vlan_vid=(VLAN | ofp.OFPVID_PRESENT))])
@@ -91,9 +100,9 @@ class Pipette(app_manager.RyuApp):
         for table_id, match, instructions in (
                 # Learn from coprocessor port/do inbound translation.
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP),
-                 self.output_controller()),
+                 learn_out_actions),
                 (1, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP),
-                 self.output_controller()),
+                 learn_out_actions),
                 # Program OVS to respond to ARP on fake port.
                 (2, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, arp_op=0x1),
                  self.apply_actions([
