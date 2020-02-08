@@ -21,7 +21,25 @@ class PipetteSmokeTest(unittest.TestCase):  # pytype: disable=module-attr
     """Test bare instantiation of controller classes."""
 
     def test_smoke(self):
-        _ = Pipette(dpset={})
+        pipette = Pipette(dpset={})
+
+        class FakeDP:
+
+            def send_msg(self, msg):
+                return
+
+        class FakeMsg:
+
+            def __init__(self):
+                self.datapath = FakeDP()
+
+        class FakeEv:
+
+            def __init__(self):
+                self.msg = FakeMsg()
+
+        assert pipette.switch_features_handler(FakeEv()) is None
+
 
 
 if __name__ == "__main__":
