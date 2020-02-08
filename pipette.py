@@ -76,7 +76,7 @@ class Pipette(app_manager.RyuApp):
         return self.apply_actions([
             # first, calculate src NAT address, leave in reg0.
             # Assuming ipv4_src is 192.168.2.5, ipv4_dst is 192.168.2.1, and NFVIP is 10.10.0.1/24
-            # ipv4_src becomes 10.10.5.2 (low octet of dst is LSB, then low octet of src).
+            # ipv4_src becomes 10.10.5.1 (low octet of dst is LSB, then low octet of src).
             parser.NXActionRegLoad(value=int(nat_base), dst='reg0', ofs_nbits=nicira_ext.ofs_nbits(0, 31)),
             parser.NXActionRegMove(src_field='ipv4_src', dst_field='reg0', n_bits=8, src_ofs=0, dst_ofs=8),
             parser.NXActionRegMove(src_field='ipv4_dst', dst_field='reg0', n_bits=8, src_ofs=0, dst_ofs=0),
