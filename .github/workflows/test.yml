@@ -24,6 +24,8 @@ jobs:
         coverage xml pipette.py
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v1.0.5
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
       if: github.repository == 'cyberreboot/pipette' && github.event_name == 'push'
