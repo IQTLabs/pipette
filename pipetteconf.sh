@@ -30,3 +30,6 @@ OF=6699
 COPROPORT=1
 # OF port number for fake interface
 FAKEPORT=2
+# Flag to record and location to dump pcaps
+RECORD=1
+PCAP_LOCATION=./pcaps

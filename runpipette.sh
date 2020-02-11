@@ -15,7 +15,8 @@ function show_help()
       -i,  fakeip        fake ip for fake services(will be proxied from real IPS)
       -h,  help          print this help
       -b,  bridge        name of ovs bridge to create
-      -p,  port          pipette port"
+      -p,  port          pipette port
+      -r,  record        record traffic captured by pipette should be followed by location then size of file i.e.: -r /pcaps.file.pcap 50"
 }
 
 function check_args()
@@ -48,6 +49,13 @@ function check_args()
                 ;;
             -p|port)
                 OF="$2"
+                shift
+                ;;
+            -r|record)
+                RECORD=1
+                PCAP_LOCATION="$2"
+                shift
+                FILE_SIZE="$2"
                 shift
                 ;;
             -h|\?|help)
@@ -84,6 +92,11 @@ sudo ovs-vsctl add-port $BR $COPROINT -- set Interface $COPROINT ofport_request=
 sudo ovs-vsctl add-port $BR ovs$FAKEINT -- set Interface ovs$FAKEINT ofport_request=$FAKEPORT
 echo "Setting controller"
 sudo ovs-vsctl set-controller $BR tcp:127.0.0.1:$OF
+
+if [ $RECORD -ne 0 ]; then
+    echo "Starting tcpdump on interface $COPROINT"
+    sudo tcpdump -i $COPROINT -F $PCAP_LOCATION -C $FILE_SIZE &
+fi
 
 # docker build -f $DFILE . -t cyberreboot/pipette && docker run -e NFVIP=$NFVIP -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLAN=$VLAN -p 127.0.0.1:$OF:6653 -ti cyberreboot/pipette
 ryu-manager --verbose --ofp-tcp-listen-port $OF pipette.py
