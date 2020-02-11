@@ -1,3 +1,9 @@
+# pipette configuration
+
+# NOTE: system management of all pipette's interfaces should be disabled.
+# e.g. add denyinterfaces COPROINT, denyinterfaces BR, etc all to /etc/dhcpdc.conf
+
+
 # interface connected to FAUCET coprocessor port.
 COPROINT=enx0023565c8859
 # address fake services will be run on (will be proxied from real IPs)
@@ -20,3 +26,7 @@ FAKECLIENTMAC=0e:00:00:00:00:67
 BR=copro0
 # pipette OF port
 OF=6699
+# OF port number for interface facing coprocessor
+COPROPORT=1
+# OF port number for fake interface
+FAKEPORT=2
