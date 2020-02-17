@@ -75,7 +75,7 @@ fi
 remove_int_ip() {
   local int=$1
   sudo ip addr flush dev $int
-  sudo ip link set $int
+  sudo ip link set $int up
 }
 
 
