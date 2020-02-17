@@ -40,7 +40,7 @@ function check_args()
                 shift
                 ;;
             -i|fakeip)
-                NFVIP="$2"
+                NFVIPS="$2"
                 shift
                 ;;
             -b|bridge)
@@ -71,17 +71,31 @@ if [ $# -gt 0 ]; then
     check_args "$@"
 fi
 
+
+remove_int_ip() {
+  local int=$1
+  sudo ip addr flush dev $int
+  sudo ip link set $int
+}
+
+
 # Configure pipette's OVS switch.
-# Remove all IP addresses, disable IPv6.
 echo "Configuring OVS switch for pipette"
 sudo ip link add dev $FAKEINT type veth peer name ovs$FAKEINT
-sudo ip link set dev $FAKEINT address $FAKESERVERMAC
-echo "Removing IPs"
 for i in $COPROINT $FAKEINT ovs$FAKEINT ; do
-  sudo ip addr flush dev $i
-  sudo ip link set $i up
+  remove_int_ip $i
 done
-sudo ip addr add $NFVIP dev $FAKEINT
+
+for ((i=0; i< "${#VLANS[@]}"; i++)) ; do
+  vlan="${VLANS[$i]}"
+  nfvip="${NFVIPS[$i]}"
+  fakeintvlan=${FAKEINT}.${vlan}
+  sudo ip link add link $FAKEINT name $fakeintvlan type vlan id $vlan
+  sudo ip link set dev $fakeintvlan address $FAKESERVERMAC
+  remove_int_ip $fakeintvlan
+  sudo ip addr add $nfvip dev $fakeintvlan
+done
+
 
 sudo ovs-vsctl --if-exists del-br $BR
 
@@ -93,10 +107,12 @@ sudo ovs-vsctl add-port $BR ovs$FAKEINT -- set Interface ovs$FAKEINT ofport_requ
 echo "Setting controller"
 sudo ovs-vsctl set-controller $BR tcp:127.0.0.1:$OF
 
+
 if [ $RECORD -ne 0 ]; then
     echo "Starting tcpdump on interface $COPROINT"
     sudo tcpdump -i $COPROINT -F $PCAP_LOCATION -C $FILE_SIZE &
 fi
 
-# docker build -f $DFILE . -t cyberreboot/pipette && docker run -e NFVIP=$NFVIP -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLAN=$VLAN -p 127.0.0.1:$OF:6653 -ti cyberreboot/pipette
+
+# docker build -f $DFILE . -t cyberreboot/pipette && docker run -e NFVIPS=$NFVIPS -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLANS=$VLANS -p 127.0.0.1:$OF:6653 -ti cyberreboot/pipette
 ryu-manager --verbose --ofp-tcp-listen-port $OF pipette.py
