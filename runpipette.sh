@@ -118,7 +118,7 @@ sudo ovs-vsctl set-controller "$BR" tcp:127.0.0.1:"$OF"
 
 if [ $RECORD -ne 0 ]; then
     echo "Starting tcpdump on interface $COPROINT"
-    sudo tcpdump -i "$COPROINT" -F "$PCAP_LOCATION" -C "$FILE_SIZE" &
+    sudo tcpdump -i "$COPROINT" -w "$PCAP_LOCATION" -C "$FILE_SIZE" -Z root &
 fi
 
 
