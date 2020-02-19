@@ -86,15 +86,15 @@ fi
 
 
 remove_int_ip() {
-  local int=$1
-  sudo ip addr flush dev $int
+  local int="$1"
+  sudo ip addr flush dev "$int"
   sudo ip link set $int up
 }
 
 
 # Configure pipette's OVS switch.
 echo "Configuring OVS switch for pipette"
-sudo ip link add dev $FAKEINT type veth peer name ovs$FAKEINT
+sudo ip link add dev "$FAKEINT" type veth peer name "ovs$FAKEINT"
 for i in $COPROINT $FAKEINT ovs$FAKEINT ; do
   remove_int_ip $i
 done
@@ -103,10 +103,10 @@ for ((i=0; i< "${#VLANS[@]}"; i++)) ; do
   vlan="${VLANS[$i]}"
   nfvip="${NFVIPS[$i]}"
   fakeintvlan=${FAKEINT}.${vlan}
-  sudo ip link add link $FAKEINT name $fakeintvlan type vlan id $vlan
-  sudo ip link set dev $fakeintvlan address $FAKESERVERMAC
-  remove_int_ip $fakeintvlan
-  sudo ip addr add $nfvip dev $fakeintvlan
+  sudo ip link add link "$FAKEINT" name "$fakeintvlan" type vlan id $vlan
+  sudo ip link set dev "$fakeintvlan" address "$FAKESERVERMAC"
+  remove_int_ip "$fakeintvlan"
+  sudo ip addr add $nfvip dev "$fakeintvlan"
 done
 
 
