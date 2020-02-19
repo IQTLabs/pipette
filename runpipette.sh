@@ -12,10 +12,11 @@ function show_help()
       -f,  fakeint       interface created for fake services to run on
       -m,  fakemac       fake mac for fake interface
       -fch, fakeclientmac fake client mac address
-      -i,  fakeip        fake ip for fake services(will be proxied from real IPS)
+      -i,  fakeips       fake ip for fake services, space delimitted (will be proxied from real IPS)
       -h,  help          print this help
       -b,  bridge        name of ovs bridge to create
       -p,  port          pipette port
+      -v,  vlans         coprocessor vlans, space delimitted
       -r,  record        record traffic captured by pipette should be followed by location then size of file i.e.: -r /pcaps.file.pcap 50"
 }
 
@@ -39,9 +40,21 @@ function check_args()
                 FAKECLIENTMAC="$2"
                 shift
                 ;;
-            -i|fakeip)
-                NFVIPS="$2"
-                shift
+            -i|fakeips)
+                NFVIPS=""
+                while [[ "$2" != -* && -n "$2" ]]
+                do
+                  NFVIPS+="$2 "
+                  shift
+                done 
+                ;;
+            -v|vlans)
+                VLANS=""
+                while [[ "$2" != -* && -n "$2" ]]
+                do
+                  VLANS+="$2 "
+                  shift
+                done 
                 ;;
             -b|bridge)
                 BR="$2"
