@@ -11,7 +11,6 @@ function show_help()
       -c,  coproint      interface to send coprocessed traffic to
       -f,  fakeint       interface created for fake services to run on
       -m,  fakemac       fake mac for fake interface
-      -fch, fakeclientmac fake client mac address
       -i,  fakeips       fake ip for fake services, space delimitted (will be proxied from real IPS)
       -h,  help          print this help
       -b,  bridge        name of ovs bridge to create
@@ -34,10 +33,6 @@ function check_args()
                 ;;
             -m|fakemac)
                 FAKESERVERMAC="$2"
-                shift
-                ;;
-            -fch|fakeclientmac)
-                FAKECLIENTMAC="$2"
                 shift
                 ;;
             -i|fakeips)
