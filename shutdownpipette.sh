@@ -49,11 +49,11 @@ sudo docker stop pipette
 sudo ovs-vsctl del-br $BR 
 
 #bring down fake ip
-sudo ifconfig ovs$FAKEINT down
+sudo ip link set ovs$FAKEINT down
 
 #remove fake switch
 sudo ip link del dev ovs$FAKEINT
 
 #reset coprocessor interface
-sudo ifconfig $COPROINT down
-sudo ifconfig $COPROINT up
+sudo ip link set $COPROINT down
+sudo ip link set $COPROINT up
