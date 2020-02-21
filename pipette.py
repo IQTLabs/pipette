@@ -17,12 +17,14 @@
 # limitations under the License.
 
 import ipaddress
+import logging
 import socket
 import os
+import sys
 import netaddr
 from ryu.base import app_manager
-from ryu.controller import ofp_event
-from ryu.controller.handler import CONFIG_DISPATCHER, set_ev_cls
+from ryu.controller import dpset, ofp_event
+from ryu.controller.handler import MAIN_DISPATCHER, set_ev_cls
 from ryu.lib.packet import arp
 from ryu.ofproto import ether, nicira_ext
 from ryu.ofproto import ofproto_v1_3 as ofp
@@ -55,6 +57,10 @@ TO_COPRO_TABLE = 2
 class Pipette(app_manager.RyuApp):
 
     OFP_VERSIONS = [ofp.OFP_VERSION]
+    _CONTEXTS = {
+        'dpset': dpset.DPSet,
+    }
+
 
     @staticmethod
     def send_mods(datapath, mods):
@@ -133,9 +139,37 @@ class Pipette(app_manager.RyuApp):
             parser.OFPActionOutput(ofp.OFPP_IN_PORT)])
 
 
-    @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)  # pylint: disable=no-member
-    def switch_features_handler(self, ev):
-        datapath = ev.msg.datapath
+    @staticmethod
+    def report_port(of_port):
+        PORT_NAMES = {
+            COPROPORT: 'COPROPORT',
+            FAKEPORT: 'FAKEPORT',
+        }
+        port_name = PORT_NAMES.get(of_port.port_no, None)
+        if not port_name:
+            return
+        blocked_down_state = (
+            (of_port.state & ofp.OFPPS_BLOCKED) or (of_port.state & ofp.OFPPS_LINK_DOWN))
+        if blocked_down_state:
+            port_state = 'down'
+        else:
+            port_state = 'up'
+        logging.warning(
+            'PORT %s (%u) %s: %s', of_port.name, of_port.port_no, port_state, of_port)
+
+
+    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER) # pylint: disable=no-member
+    def port_status_handler(self, ryu_event):
+        self.report_port(ryu_event.msg.desc)
+
+
+    @set_ev_cls(dpset.EventDP, dpset.DPSET_EV_DISPATCHER)
+    @set_ev_cls(dpset.EventDPReconnected, dpset.DPSET_EV_DISPATCHER)
+    def dp_connect(self, ryu_event):
+        logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+        datapath = ryu_event.dp
+        for of_port in datapath.ports.values():
+            self.report_port(of_port)
         mods = []
         # Drop all flows.
         mods.append(parser.OFPFlowMod(

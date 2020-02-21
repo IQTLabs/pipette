@@ -23,22 +23,27 @@ class PipetteSmokeTest(unittest.TestCase):  # pytype: disable=module-attr
     def test_smoke(self):
         pipette = Pipette(dpset={})
 
+        class FakePort:
+
+            port_no = 1
+            name = 'fakey'
+            state = 0
+
         class FakeDP:
+
+            def __init__(self):
+                self.ports = {1: FakePort()}
 
             def send_msg(self, msg):
                 return
 
-        class FakeMsg:
-
-            def __init__(self):
-                self.datapath = FakeDP()
-
         class FakeEv:
 
             def __init__(self):
-                self.msg = FakeMsg()
+                self.dp = FakeDP()
 
-        assert pipette.switch_features_handler(FakeEv()) is None
+
+        assert pipette.dp_connect(FakeEv()) is None
 
 
 
