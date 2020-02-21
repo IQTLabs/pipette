@@ -28,7 +28,7 @@ jobs:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-      if: github.repository == 'cyberreboot/pipette' && github.event_name == 'push'
+      if: github.repository == 'cyberreboot/pipette'
     - name: docker-test
       run: |
         docker build -f Dockerfile -t cyberreboot/pipette .
