@@ -74,6 +74,54 @@ class Pipette(app_manager.RyuApp):
         return [parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)]
 
 
+    def nat_actions(self, eth_type, nfvip):
+        ip_ver = nfvip.ip.version
+        ip_src_nxm = 'ipv%u_src_nxm' % ip_ver
+        ip_dst_nxm = 'ipv%u_dst_nxm' % ip_ver
+        ipbits = nfvip.ip.max_prefixlen
+        return [
+            # we have to load output port numbers into reg1 and reg2 because NXFlowSpecOutput() won't take a literal.
+            parser.NXActionRegLoad(value=FAKEPORT, dst='reg1', ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
+            parser.NXActionRegLoad(value=COPROPORT, dst='reg2', ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
+            # now program an inbound flow to perform NAT.
+            parser.NXActionLearn(
+                table_id=FROM_COPRO_TABLE,
+                priority=2,
+                hard_timeout=IDLE,
+                specs=[
+                    parser.NXFlowSpecMatch(src=eth_type, dst=('eth_type_nxm', 0), n_bits=16),
+                    parser.NXFlowSpecMatch(src=(ip_src_nxm, 0), dst=(ip_src_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecMatch(src=(ip_dst_nxm, 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecLoad(src=int(FAKECLIENTMAC), dst=('eth_src_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecLoad(src=int(FAKESERVERMAC), dst=('eth_dst_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecLoad(src=('reg0', 0), dst=(ip_src_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecLoad(src=int(nfvip.ip), dst=(ip_dst_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecOutput(src=('reg1', 0), dst='', n_bits=16),
+                ]),
+            # now program outbound an outbound flow.
+            parser.NXActionLearn(
+                table_id=TO_COPRO_TABLE,
+                priority=2,
+                idle_timeout=IDLE,
+                specs=[
+                    parser.NXFlowSpecMatch(src=eth_type, dst=('eth_type_nxm', 0), n_bits=16),
+                    parser.NXFlowSpecMatch(src=int(nfvip.ip), dst=(ip_src_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecMatch(src=('reg0', 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecLoad(src=('eth_dst_nxm', 0), dst=('eth_src_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecLoad(src=('eth_src_nxm', 0), dst=('eth_dst_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecLoad(src=(ip_dst_nxm, 0), dst=(ip_src_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecLoad(src=(ip_src_nxm, 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecOutput(src=('reg2', 0), dst='', n_bits=16),
+                ]),
+            # now that future flows are programmed, handle the packet we have.
+            parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
+            parser.OFPActionSetField(eth_dst=FAKESERVERMAC),
+            parser.NXActionRegMove(src_field='reg0', dst_field=('ipv%u_src' % ip_ver), n_bits=ipbits, src_ofs=0, dst_ofs=0),
+            parser.OFPActionSetField(**{'ipv%u_dst' % ip_ver: str(nfvip.ip)}),
+            parser.OFPActionOutput(FAKEPORT)
+         ]
+
+
     def natv6_flows(self, nfvip):
         return self.apply_actions([])
 
@@ -89,45 +137,7 @@ class Pipette(app_manager.RyuApp):
             parser.NXActionRegLoad(value=int(nat_base), dst='reg0', ofs_nbits=nicira_ext.ofs_nbits(0, 31)),
             parser.NXActionRegMove(src_field='ipv4_src', dst_field='reg0', n_bits=8, src_ofs=0, dst_ofs=8),
             parser.NXActionRegMove(src_field='ipv4_dst', dst_field='reg0', n_bits=8, src_ofs=0, dst_ofs=0),
-            # we have to load output port numbers into reg1 and reg2 because NXFlowSpecOutput() won't take a literal.
-            parser.NXActionRegLoad(value=FAKEPORT, dst='reg1', ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
-            parser.NXActionRegLoad(value=COPROPORT, dst='reg2', ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
-            # now program an inbound flow to perform NAT.
-            parser.NXActionLearn(
-                table_id=FROM_COPRO_TABLE,
-                priority=2,
-                hard_timeout=IDLE,
-                specs=[
-                    parser.NXFlowSpecMatch(src=ether.ETH_TYPE_IP, dst=('eth_type_nxm', 0), n_bits=16),
-                    parser.NXFlowSpecMatch(src=('ipv4_src_nxm', 0), dst=('ipv4_src_nxm', 0), n_bits=32),
-                    parser.NXFlowSpecMatch(src=('ipv4_dst_nxm', 0), dst=('ipv4_dst_nxm', 0), n_bits=32),
-                    parser.NXFlowSpecLoad(src=int(FAKECLIENTMAC), dst=('eth_src_nxm', 0), n_bits=48),
-                    parser.NXFlowSpecLoad(src=int(FAKESERVERMAC), dst=('eth_dst_nxm', 0), n_bits=48),
-                    parser.NXFlowSpecLoad(src=('reg0', 0), dst=('ipv4_src_nxm', 0), n_bits=32),
-                    parser.NXFlowSpecLoad(src=int(nfvip.ip), dst=('ipv4_dst_nxm', 0), n_bits=32),
-                    parser.NXFlowSpecOutput(src=('reg1', 0), dst='', n_bits=16),
-                ]),
-            # now program outbound an outbound flow.
-            parser.NXActionLearn(
-                table_id=TO_COPRO_TABLE,
-                priority=2,
-                idle_timeout=IDLE,
-                specs=[
-                    parser.NXFlowSpecMatch(src=ether.ETH_TYPE_IP, dst=('eth_type_nxm', 0), n_bits=16),
-                    parser.NXFlowSpecMatch(src=int(nfvip.ip), dst=('ipv4_src_nxm', 0), n_bits=32),
-                    parser.NXFlowSpecMatch(src=('reg0', 0), dst=('ipv4_dst_nxm', 0), n_bits=32),
-                    parser.NXFlowSpecLoad(src=('eth_dst_nxm', 0), dst=('eth_src_nxm', 0), n_bits=48),
-                    parser.NXFlowSpecLoad(src=('eth_src_nxm', 0), dst=('eth_dst_nxm', 0), n_bits=48),
-                    parser.NXFlowSpecLoad(src=('ipv4_dst_nxm', 0), dst=('ipv4_src_nxm', 0), n_bits=32),
-                    parser.NXFlowSpecLoad(src=('ipv4_src_nxm', 0), dst=('ipv4_dst_nxm', 0), n_bits=32),
-                    parser.NXFlowSpecOutput(src=('reg2', 0), dst='', n_bits=16),
-                ]),
-            # now that future flows are programmed, handle the packet we have.
-            parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
-            parser.OFPActionSetField(eth_dst=FAKESERVERMAC),
-            parser.NXActionRegMove(src_field='reg0', dst_field='ipv4_src', n_bits=32, src_ofs=0, dst_ofs=0),
-            parser.OFPActionSetField(ipv4_dst=str(nfvip.ip)),
-            parser.OFPActionOutput(FAKEPORT)])
+         ] + self.nat_actions(ether.ETH_TYPE_IP, nfvip))
 
 
     @staticmethod
