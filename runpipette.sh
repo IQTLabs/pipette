@@ -123,4 +123,5 @@ fi
 
 
 # docker build -f $DFILE . -t cyberreboot/pipette && docker run -e NFVIPS=$NFVIPS -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLANS=$VLANS -p 127.0.0.1:$OF:6653 -ti cyberreboot/pipette
+export NFVIPS VLANS COPROINT FAKEINT
 ryu-manager --verbose --ofp-tcp-listen-port "$OF" pipette.py
