@@ -86,6 +86,9 @@ remove_int_ip() {
   sudo ip link set "$int" up
 }
 
+if [ ! -d "$PIPETTE_TEMP_DIR" ]; then
+  mkdir "$PIPETTE_TEMP_DIR"
+fi
 
 # Configure pipette's OVS switch.
 echo "Configuring OVS switch for pipette"
@@ -119,9 +122,11 @@ sudo ovs-vsctl set-controller "$BR" tcp:127.0.0.1:"$OF"
 if [ $RECORD -ne 0 ]; then
     echo "Starting tcpdump on interface $COPROINT"
     sudo tcpdump -i "$COPROINT" -w "$PCAP_LOCATION" -C "$FILE_SIZE" -Z root &
+    echo $! >> "$PIPETTE_TEMP_DIR/tcpdump"
 fi
 
 
 # docker build -f $DFILE . -t cyberreboot/pipette && docker run -e NFVIPS=$NFVIPS -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLANS=$VLANS -p 127.0.0.1:$OF:6653 -ti cyberreboot/pipette
 export NFVIPS VLANS COPROINT FAKEINT
-ryu-manager --verbose --ofp-tcp-listen-port "$OF" pipette.py
+ryu-manager --verbose --ofp-tcp-listen-port "$OF" pipette.py &
+echo $! >> "$PIPETTE_TEMP_DIR/ryu"

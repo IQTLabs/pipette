@@ -37,3 +37,5 @@ FAKEPORT=2
 RECORD=0
 PCAP_LOCATION=./pcaps
 
+#pipette temporary directory
+PIPETTE_TEMP_DIR=/tmp/pipette

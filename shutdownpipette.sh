@@ -44,7 +44,17 @@ if [ $# -gt 0 ]; then
 fi
 
 #sudo docker stop pipette
-sudo kill -9 ryu-manager
+if [ -f "$PIPETTE_TEMP_DIR/ryu" ]; then
+    ryu_pid=$(cat "$PIPETTE_TEMP_DIR/ryu")
+    echo "killing process with pid $ryu_pid"
+    sudo kill -9 $ryu_pid
+fi
+
+if [ -f "$PIPETTE_TEMP_DIR/tcpdump" ]; then
+    tcpdump_pid=$(cat "$PIPETTE_TEMP_DIR/tcpdump")
+    echo "killing process with pid $tcpdump_pid"
+    sudo kill -9 $tcpdump_pid
+fi
 
 #delete bridge
 sudo ovs-vsctl del-br "$BR"
@@ -58,3 +68,7 @@ sudo ip link del dev "ovs$FAKEINT"
 #reset coprocessor interface
 sudo ip link set "$COPROINT" down
 sudo ip link set "$COPROINT" up
+
+if [ -d "$PIPETTE_TEMP_DIR" ]; then
+  rm -rf "$PIPETTE_TEMP_DIR"
+fi
