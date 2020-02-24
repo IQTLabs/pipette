@@ -34,6 +34,8 @@ COPROPORT=1
 # OF port number for fake interface
 FAKEPORT=2
 # Flag to record and location to dump pcaps
-RECORD=1
+RECORD=0
 PCAP_LOCATION=./pcaps
 
+#pipette temporary directory
+PIPETTE_TEMP_DIR=/tmp/pipette
