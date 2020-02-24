@@ -1,7 +1,7 @@
 # pipette configuration
 
 # NOTE: system management of all pipette's interfaces should be disabled.
-# e.g. add denyinterfaces COPROINT, denyinterfaces BR, etc all to /etc/dhcpdc.conf
+# e.g. add denyinterfaces COPROINT, denyinterfaces BR, etc all to /etc/dhcpcd.conf
 
 
 # interface connected to FAUCET coprocessor port.
@@ -10,6 +10,8 @@ COPROINT=enx0023565c8859
 # At the moment must be /16, and real network must be /24 (for NAT to work).
 # space separated.
 NFVIPS="10.10.0.1/16"
+# IPv6 is also supported - must be a /64, the real network must be a /96.
+# NFVIPS="fc04::1/64"
 # FAUCET VLANS where fake services will appear (space separated).
 VLANS="2"
 # interface that will be created for fake services to run on.
