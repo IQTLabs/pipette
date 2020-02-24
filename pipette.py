@@ -25,7 +25,7 @@ import netaddr
 from ryu.base import app_manager
 from ryu.controller import dpset, ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER, set_ev_cls
-from ryu.lib.packet import arp
+from ryu.lib.packet import arp, ethernet, icmpv6, ipv6, packet, vlan
 from ryu.ofproto import ether, nicira_ext
 from ryu.ofproto import ofproto_v1_3 as ofp
 from ryu.ofproto import ofproto_v1_3_parser as parser
@@ -52,6 +52,7 @@ IDLE = 300
 INTF_TABLE = 0
 FROM_COPRO_TABLE = 1
 TO_COPRO_TABLE = 2
+ALL_TABLES = (INTF_TABLE, FROM_COPRO_TABLE, TO_COPRO_TABLE)
 
 
 class Pipette(app_manager.RyuApp):
@@ -125,18 +126,27 @@ class Pipette(app_manager.RyuApp):
             parser.OFPActionOutput(FAKEPORT)])
 
 
+    @staticmethod
+    def common_reply_actions():
+        # pylint: disable=no-member
+        return [
+            parser.NXActionRegMove(src_field='eth_src', dst_field='eth_dst', n_bits=48, src_ofs=0, dst_ofs=0),
+            parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
+            parser.OFPActionOutput(ofp.OFPP_IN_PORT)
+        ]
+
+
     def arp_reply_actions(self):
         # pylint: disable=no-member
+        common_reply = self.common_reply_actions()
         return self.apply_actions([
             parser.NXActionRegLoad(value=arp.ARP_REPLY, dst='arp_op', ofs_nbits=nicira_ext.ofs_nbits(0, 2)),
-            parser.NXActionRegMove(src_field='eth_src', dst_field='eth_dst', n_bits=48, src_ofs=0, dst_ofs=0),
             parser.NXActionRegMove(src_field='arp_sha', dst_field='arp_tha', n_bits=48, src_ofs=0, dst_ofs=0),
             parser.NXActionRegMove(src_field='arp_tpa', dst_field='reg0', n_bits=32, src_ofs=0, dst_ofs=0),
             parser.NXActionRegMove(src_field='arp_spa', dst_field='arp_tpa', n_bits=32, src_ofs=0, dst_ofs=0),
             parser.NXActionRegMove(src_field='reg0', dst_field='arp_spa', n_bits=32, src_ofs=0, dst_ofs=0),
-            parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
             parser.OFPActionSetField(arp_sha=FAKECLIENTMAC),
-            parser.OFPActionOutput(ofp.OFPP_IN_PORT)])
+            ] + common_reply)
 
 
     @staticmethod
@@ -179,40 +189,55 @@ class Pipette(app_manager.RyuApp):
             out_group=ofp.OFPG_ANY,
         ))
         # Default deny all tables
-        for table_id in (INTF_TABLE, FROM_COPRO_TABLE, TO_COPRO_TABLE):
+        for table_id in ALL_TABLES:
             mods.append(parser.OFPFlowMod(
                 datapath=datapath,
                 command=ofp.OFPFC_ADD,
                 table_id=table_id,
                 priority=0,
                 instructions=[]))
-        for vlan, nfvip in zip(VLANS, NFVIPS):
-            vlan_id = (vlan | ofp.OFPVID_PRESENT)
-            for table_id, match, instructions in (
-                    # Program OVS to respond to ARP on fake port.
-                    (TO_COPRO_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, vlan_vid=vlan_id),
-                     self.arp_reply_actions()),
-                    # Learn from coprocessor port/do inbound translation.
-                    (FROM_COPRO_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, vlan_vid=vlan_id),
-                     self.nat_flows(nfvip)),
-                    # Packets from coprocessor go to tuple inbound table.
-                    (INTF_TABLE, parser.OFPMatch(
-                        eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP, in_port=COPROPORT, vlan_vid=vlan_id),
-                     [parser.OFPInstructionGotoTable(FROM_COPRO_TABLE)]),
-                    (INTF_TABLE, parser.OFPMatch(
-                        eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP, in_port=COPROPORT, vlan_vid=vlan_id),
-                     [parser.OFPInstructionGotoTable(FROM_COPRO_TABLE)]),
-                    # Packets from fake interface go outbound table.
-                    (INTF_TABLE, parser.OFPMatch(
-                        eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP, in_port=FAKEPORT, vlan_vid=vlan_id),
-                     [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]),
-                    (INTF_TABLE, parser.OFPMatch(
-                        eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP, in_port=FAKEPORT, vlan_vid=vlan_id),
-                     [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]),
-                    (INTF_TABLE, parser.OFPMatch(
-                        eth_type=ether.ETH_TYPE_ARP, eth_src=FAKESERVERMAC, in_port=FAKEPORT, arp_op=arp.ARP_REQUEST, vlan_vid=vlan_id),
-                     [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]),
-                ):
+
+
+        def ipv6_flows(vlan_id, _nfvip):
+            return (
+                (INTF_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_IPV6, vlan_vid=vlan_id, ip_proto=socket.IPPROTO_ICMPV6, icmpv6_type=icmpv6.ND_NEIGHBOR_SOLICIT),
+                 self.apply_actions([parser.OFPActionOutput(ofp.OFPP_CONTROLLER)])))
+
+
+        def ipv4_flows(vlan_id, nfvip):
+            return (
+                # Program OVS to respond to ARP on fake port.
+                (TO_COPRO_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, vlan_vid=vlan_id),
+                 self.arp_reply_actions()),
+                # Learn from coprocessor port/do inbound translation.
+                (FROM_COPRO_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, vlan_vid=vlan_id),
+                 self.nat_flows(nfvip)),
+                # Packets from coprocessor go to tuple inbound table.
+                (INTF_TABLE, parser.OFPMatch(
+                    eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP, in_port=COPROPORT, vlan_vid=vlan_id),
+                 [parser.OFPInstructionGotoTable(FROM_COPRO_TABLE)]),
+                (INTF_TABLE, parser.OFPMatch(
+                    eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP, in_port=COPROPORT, vlan_vid=vlan_id),
+                 [parser.OFPInstructionGotoTable(FROM_COPRO_TABLE)]),
+                # Packets from fake interface go outbound table.
+                (INTF_TABLE, parser.OFPMatch(
+                    eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP, in_port=FAKEPORT, vlan_vid=vlan_id),
+                 [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]),
+                (INTF_TABLE, parser.OFPMatch(
+                    eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP, in_port=FAKEPORT, vlan_vid=vlan_id),
+                 [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]),
+                (INTF_TABLE, parser.OFPMatch(
+                    eth_type=ether.ETH_TYPE_ARP, eth_src=FAKESERVERMAC, in_port=FAKEPORT, arp_op=arp.ARP_REQUEST, vlan_vid=vlan_id),
+                 [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]))
+
+
+        for nfvlan, nfvip in zip(VLANS, NFVIPS):
+            vlan_id = (nfvlan | ofp.OFPVID_PRESENT)
+            if nfvip.version == 6:
+                flows = ipv6_flows
+            else:
+                flows = ipv4_flows
+            for table_id, match, instructions in flows(vlan_id, nfvip):
                 mods.append(parser.OFPFlowMod(
                     datapath=datapath,
                     command=ofp.OFPFC_ADD,
@@ -221,3 +246,44 @@ class Pipette(app_manager.RyuApp):
                     match=match,
                     instructions=instructions))
         self.send_mods(datapath, mods)
+
+    # TODO: need packet in handler for IPv6 only, as OF1.3 won't let us set OFPXMT_OFB_ICMPV6_ND_RESERVED
+    # See https://docs.opendaylight.org/projects/netvirt/en/latest/specs/fluorine/ovs_based_na_responder_for_gw.html.
+    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER) # pylint: disable=no-member
+    def packet_in_handler(self, event):
+        if event.msg.match['in_port'] != FAKEPORT:
+            return
+        pkt = packet.Packet(event.msg.data)
+        eth_protocol = pkt.get_protocol(ethernet.ethernet)
+        vlan_protocol = pkt.get_protocol(vlan.vlan)
+        ipv6_protocol = pkt.get_protocol(ipv6.ipv6)
+        icmpv6_protocol = pkt.get_protocol(icmpv6.icmpv6)
+        if not (eth_protocol and vlan_protocol and ipv6_protocol and icmpv6_protocol):
+            return
+        if icmpv6_protocol.type_ != icmpv6.ND_NEIGHBOR_SOLICIT:
+            return
+        if int(ipaddress.ip_address(ipv6_protocol.src)) == 0:
+            return
+        src_ip = ipaddress.ip_address(icmpv6_protocol.data.dst)
+        if src_ip.is_reserved:
+            return
+        eth_dst = eth_protocol.src
+        dst_ip = ipv6_protocol.src
+        eth_src = FAKECLIENTMAC
+        vid = vlan_protocol.vid
+        reply = packet.Packet()
+        for protocol in (
+                ethernet.ethernet(eth_dst, eth_src, ether.ETH_TYPE_8021Q),
+                vlan.vlan(vid=vid, ethertype=ether.ETH_TYPE_IPV6),
+                ipv6.ipv6(src=src_ip, dst=dst_ip, nxt=socket.IPPROTO_ICMPV6, hop_limit=255),
+                icmpv6.icmpv6(
+                    type_=icmpv6.ND_NEIGHBOR_ADVERT,
+                    data=icmpv6.nd_neighbor(dst=src_ip, option=icmpv6.nd_option_tla(hw_src=eth_src), res=7))):
+            reply.add_protocol(protocol)
+        reply.serialize()
+        out = parser.OFPPacketOut(
+            datapath=event.msg.datapath,
+            buffer_id=ofp.OFP_NO_BUFFER,
+            in_port=ofp.OFPP_CONTROLLER,
+            actions=[parser.OFPActionOutput(FAKEPORT)], data=reply.data)
+        self.send_mods(event.msg.datapath, [out])
