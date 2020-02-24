@@ -74,7 +74,7 @@ class Pipette(app_manager.RyuApp):
         return [parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)]
 
 
-    def nat_actions(self, eth_type, nfvip):
+    def nat_actions(self, eth_type, nfvip, reg0):
         ip_ver = nfvip.ip.version
         ip_src_nxm = 'ipv%u_src_nxm' % ip_ver
         ip_dst_nxm = 'ipv%u_dst_nxm' % ip_ver
@@ -94,7 +94,7 @@ class Pipette(app_manager.RyuApp):
                     parser.NXFlowSpecMatch(src=(ip_dst_nxm, 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
                     parser.NXFlowSpecLoad(src=int(FAKECLIENTMAC), dst=('eth_src_nxm', 0), n_bits=48),
                     parser.NXFlowSpecLoad(src=int(FAKESERVERMAC), dst=('eth_dst_nxm', 0), n_bits=48),
-                    parser.NXFlowSpecLoad(src=('reg0', 0), dst=(ip_src_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecLoad(src=(reg0, 0), dst=(ip_src_nxm, 0), n_bits=ipbits),
                     parser.NXFlowSpecLoad(src=int(nfvip.ip), dst=(ip_dst_nxm, 0), n_bits=ipbits),
                     parser.NXFlowSpecOutput(src=('reg1', 0), dst='', n_bits=16),
                 ]),
@@ -106,7 +106,7 @@ class Pipette(app_manager.RyuApp):
                 specs=[
                     parser.NXFlowSpecMatch(src=eth_type, dst=('eth_type_nxm', 0), n_bits=16),
                     parser.NXFlowSpecMatch(src=int(nfvip.ip), dst=(ip_src_nxm, 0), n_bits=ipbits),
-                    parser.NXFlowSpecMatch(src=('reg0', 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
+                    parser.NXFlowSpecMatch(src=(reg0, 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
                     parser.NXFlowSpecLoad(src=('eth_dst_nxm', 0), dst=('eth_src_nxm', 0), n_bits=48),
                     parser.NXFlowSpecLoad(src=('eth_src_nxm', 0), dst=('eth_dst_nxm', 0), n_bits=48),
                     parser.NXFlowSpecLoad(src=(ip_dst_nxm, 0), dst=(ip_src_nxm, 0), n_bits=ipbits),
@@ -116,7 +116,7 @@ class Pipette(app_manager.RyuApp):
             # now that future flows are programmed, handle the packet we have.
             parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
             parser.OFPActionSetField(eth_dst=FAKESERVERMAC),
-            parser.NXActionRegMove(src_field='reg0', dst_field=('ipv%u_src' % ip_ver), n_bits=ipbits, src_ofs=0, dst_ofs=0),
+            parser.NXActionRegMove(src_field=reg0, dst_field=('ipv%u_src' % ip_ver), n_bits=ipbits, src_ofs=0, dst_ofs=0),
             parser.OFPActionSetField(**{'ipv%u_dst' % ip_ver: str(nfvip.ip)}),
             parser.OFPActionOutput(FAKEPORT)
          ]
@@ -134,10 +134,10 @@ class Pipette(app_manager.RyuApp):
             # first, calculate src NAT address, leave in reg0.
             # Assuming ipv4_src is 192.168.2.5, ipv4_dst is 192.168.2.1, and NFVIP is 10.10.0.1/24
             # ipv4_src becomes 10.10.5.1 (low octet of dst is LSB, then low octet of src).
-            parser.NXActionRegLoad(value=int(nat_base), dst='reg0', ofs_nbits=nicira_ext.ofs_nbits(0, 31)),
-            parser.NXActionRegMove(src_field='ipv4_src', dst_field='reg0', n_bits=8, src_ofs=0, dst_ofs=8),
-            parser.NXActionRegMove(src_field='ipv4_dst', dst_field='reg0', n_bits=8, src_ofs=0, dst_ofs=0),
-         ] + self.nat_actions(ether.ETH_TYPE_IP, nfvip))
+            parser.NXActionRegLoad(value=int(nat_base), dst='xxreg0', ofs_nbits=nicira_ext.ofs_nbits(0, 31)),
+            parser.NXActionRegMove(src_field='ipv4_src', dst_field='xxreg0', n_bits=8, src_ofs=0, dst_ofs=8),
+            parser.NXActionRegMove(src_field='ipv4_dst', dst_field='xxreg0', n_bits=8, src_ofs=0, dst_ofs=0),
+         ] + self.nat_actions(ether.ETH_TYPE_IP, nfvip, 'xxreg0'))
 
 
     @staticmethod
@@ -156,9 +156,9 @@ class Pipette(app_manager.RyuApp):
         return self.apply_actions([
             parser.NXActionRegLoad(value=arp.ARP_REPLY, dst='arp_op', ofs_nbits=nicira_ext.ofs_nbits(0, 2)),
             parser.NXActionRegMove(src_field='arp_sha', dst_field='arp_tha', n_bits=48, src_ofs=0, dst_ofs=0),
-            parser.NXActionRegMove(src_field='arp_tpa', dst_field='reg0', n_bits=32, src_ofs=0, dst_ofs=0),
+            parser.NXActionRegMove(src_field='arp_tpa', dst_field='xxreg0', n_bits=32, src_ofs=0, dst_ofs=0),
             parser.NXActionRegMove(src_field='arp_spa', dst_field='arp_tpa', n_bits=32, src_ofs=0, dst_ofs=0),
-            parser.NXActionRegMove(src_field='reg0', dst_field='arp_spa', n_bits=32, src_ofs=0, dst_ofs=0),
+            parser.NXActionRegMove(src_field='xxreg0', dst_field='arp_spa', n_bits=32, src_ofs=0, dst_ofs=0),
             parser.OFPActionSetField(arp_sha=FAKECLIENTMAC),
             ] + common_reply)
 
