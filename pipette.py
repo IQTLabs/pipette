@@ -74,7 +74,11 @@ class Pipette(app_manager.RyuApp):
         return [parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)]
 
 
-    def nat_flows(self, nfvip):
+    def natv6_flows(self, nfvip):
+        return self.apply_actions([])
+
+
+    def natv4_flows(self, nfvip):
         # configure automatic learning.
         nat_base = nfvip.network.network_address
         # pylint: disable=no-member
@@ -173,6 +177,29 @@ class Pipette(app_manager.RyuApp):
         self.report_port(ryu_event.msg.desc)
 
 
+    @staticmethod
+    def tcp_udp_flows(vlan_id, nfvip, eth_type, nat_flows):
+        return (
+            # Learn from coprocessor port/do inbound translation.
+            (FROM_COPRO_TABLE, parser.OFPMatch(eth_type=eth_type, vlan_vid=vlan_id),
+             nat_flows(nfvip)),
+            # Packets from coprocessor go to tuple inbound table.
+            (INTF_TABLE, parser.OFPMatch(
+                eth_type=eth_type, ip_proto=socket.IPPROTO_TCP, in_port=COPROPORT, vlan_vid=vlan_id),
+             [parser.OFPInstructionGotoTable(FROM_COPRO_TABLE)]),
+            (INTF_TABLE, parser.OFPMatch(
+                eth_type=eth_type, ip_proto=socket.IPPROTO_UDP, in_port=COPROPORT, vlan_vid=vlan_id),
+             [parser.OFPInstructionGotoTable(FROM_COPRO_TABLE)]),
+            # Packets from fake interface go outbound table.
+            (INTF_TABLE, parser.OFPMatch(
+                eth_type=eth_type, ip_proto=socket.IPPROTO_TCP, in_port=FAKEPORT, vlan_vid=vlan_id),
+             [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]),
+            (INTF_TABLE, parser.OFPMatch(
+                eth_type=eth_type, ip_proto=socket.IPPROTO_UDP, in_port=FAKEPORT, vlan_vid=vlan_id),
+             [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]))
+
+
+
     @set_ev_cls(dpset.EventDP, dpset.DPSET_EV_DISPATCHER)
     @set_ev_cls(dpset.EventDPReconnected, dpset.DPSET_EV_DISPATCHER)
     def dp_connect(self, ryu_event):
@@ -201,7 +228,7 @@ class Pipette(app_manager.RyuApp):
         def ipv6_flows(vlan_id, _nfvip):
             return (
                 (INTF_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_IPV6, vlan_vid=vlan_id, ip_proto=socket.IPPROTO_ICMPV6, icmpv6_type=icmpv6.ND_NEIGHBOR_SOLICIT),
-                 self.apply_actions([parser.OFPActionOutput(ofp.OFPP_CONTROLLER)])),)
+                 self.apply_actions([parser.OFPActionOutput(ofp.OFPP_CONTROLLER)])),) + self.tcp_udp_flows(vlan_id, nfvip, ether.ETH_TYPE_IPV6, self.natv6_flows)
 
 
         def ipv4_flows(vlan_id, nfvip):
@@ -209,26 +236,9 @@ class Pipette(app_manager.RyuApp):
                 # Program OVS to respond to ARP on fake port.
                 (TO_COPRO_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, vlan_vid=vlan_id),
                  self.arp_reply_actions()),
-                # Learn from coprocessor port/do inbound translation.
-                (FROM_COPRO_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_IP, vlan_vid=vlan_id),
-                 self.nat_flows(nfvip)),
-                # Packets from coprocessor go to tuple inbound table.
-                (INTF_TABLE, parser.OFPMatch(
-                    eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP, in_port=COPROPORT, vlan_vid=vlan_id),
-                 [parser.OFPInstructionGotoTable(FROM_COPRO_TABLE)]),
-                (INTF_TABLE, parser.OFPMatch(
-                    eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP, in_port=COPROPORT, vlan_vid=vlan_id),
-                 [parser.OFPInstructionGotoTable(FROM_COPRO_TABLE)]),
-                # Packets from fake interface go outbound table.
-                (INTF_TABLE, parser.OFPMatch(
-                    eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_TCP, in_port=FAKEPORT, vlan_vid=vlan_id),
-                 [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]),
-                (INTF_TABLE, parser.OFPMatch(
-                    eth_type=ether.ETH_TYPE_IP, ip_proto=socket.IPPROTO_UDP, in_port=FAKEPORT, vlan_vid=vlan_id),
-                 [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]),
                 (INTF_TABLE, parser.OFPMatch(
                     eth_type=ether.ETH_TYPE_ARP, eth_src=FAKESERVERMAC, in_port=FAKEPORT, arp_op=arp.ARP_REQUEST, vlan_vid=vlan_id),
-                 [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)]))
+                 [parser.OFPInstructionGotoTable(TO_COPRO_TABLE)])) + self.tcp_udp_flows(vlan_id, nfvip, ether.ETH_TYPE_IP, self.natv4_flows)
 
 
         for nfvlan, nfvip in zip(VLANS, NFVIPS):
