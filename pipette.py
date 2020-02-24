@@ -43,7 +43,6 @@ FAKECLIENTMAC = netaddr.EUI(os.getenv('FAKECLIENTMAC', '0e:00:00:00:00:67'), dia
 # VLAN(s) to coprocess
 VLANS = [int(vlan) for vlan in os.getenv('VLANS', '2').split(' ')]
 # IP addresses of fake services.
-# TODO: add IPv6 support
 NFVIPS = [ipaddress.ip_interface(nfvip) for nfvip in os.getenv('NFVIPS', '10.10.0.1/16').split(' ')]
 # Idle timeout for translated flows (garbage collect)
 IDLE = 300
@@ -53,6 +52,9 @@ INTF_TABLE = 0
 FROM_COPRO_TABLE = 1
 TO_COPRO_TABLE = 2
 ALL_TABLES = (INTF_TABLE, FROM_COPRO_TABLE, TO_COPRO_TABLE)
+AREG = 'xxreg1'
+FAKEPORTREG = 'reg1'
+COPROPORTREG = 'reg2'
 
 
 class Pipette(app_manager.RyuApp):
@@ -74,15 +76,28 @@ class Pipette(app_manager.RyuApp):
         return [parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)]
 
 
-    def nat_actions(self, eth_type, nfvip, reg0):
+    @staticmethod
+    def reg_copy(areg, dst, n_bits):
+        # TODO: NXFlowSpecLoad/NXRegLoad doesn't work for > 64 bits.
+        reg_bits = 64
+        if n_bits < reg_bits:
+            reg_bits = n_bits
+        # pylint: disable=no-member
+        return [
+            parser.NXFlowSpecLoad(src=(areg, i*reg_bits), dst=(dst, i*reg_bits), n_bits=reg_bits)
+            for i in range(int(n_bits / reg_bits))]
+
+
+    def nat_actions(self, eth_type, nfvip):
         ip_ver = nfvip.ip.version
         ip_src_nxm = 'ipv%u_src_nxm' % ip_ver
         ip_dst_nxm = 'ipv%u_dst_nxm' % ip_ver
         ipbits = nfvip.ip.max_prefixlen
+        # pylint: disable=no-member
         return [
             # we have to load output port numbers into reg1 and reg2 because NXFlowSpecOutput() won't take a literal.
-            parser.NXActionRegLoad(value=FAKEPORT, dst='reg1', ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
-            parser.NXActionRegLoad(value=COPROPORT, dst='reg2', ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
+            parser.NXActionRegLoad(value=FAKEPORT, dst=FAKEPORTREG, ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
+            parser.NXActionRegLoad(value=COPROPORT, dst=COPROPORTREG, ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
             # now program an inbound flow to perform NAT.
             parser.NXActionLearn(
                 table_id=FROM_COPRO_TABLE,
@@ -94,9 +109,9 @@ class Pipette(app_manager.RyuApp):
                     parser.NXFlowSpecMatch(src=(ip_dst_nxm, 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
                     parser.NXFlowSpecLoad(src=int(FAKECLIENTMAC), dst=('eth_src_nxm', 0), n_bits=48),
                     parser.NXFlowSpecLoad(src=int(FAKESERVERMAC), dst=('eth_dst_nxm', 0), n_bits=48),
-                    parser.NXFlowSpecLoad(src=(reg0, 0), dst=(ip_src_nxm, 0), n_bits=ipbits),
+                ] + self.reg_copy(AREG, ip_src_nxm, ipbits) + [
                     parser.NXFlowSpecLoad(src=int(nfvip.ip), dst=(ip_dst_nxm, 0), n_bits=ipbits),
-                    parser.NXFlowSpecOutput(src=('reg1', 0), dst='', n_bits=16),
+                    parser.NXFlowSpecOutput(src=(FAKEPORTREG, 0), dst='', n_bits=16),
                 ]),
             # now program outbound an outbound flow.
             parser.NXActionLearn(
@@ -106,38 +121,43 @@ class Pipette(app_manager.RyuApp):
                 specs=[
                     parser.NXFlowSpecMatch(src=eth_type, dst=('eth_type_nxm', 0), n_bits=16),
                     parser.NXFlowSpecMatch(src=int(nfvip.ip), dst=(ip_src_nxm, 0), n_bits=ipbits),
-                    parser.NXFlowSpecMatch(src=(reg0, 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
+                ] + self.reg_copy(AREG, ip_dst_nxm, ipbits) + [
                     parser.NXFlowSpecLoad(src=('eth_dst_nxm', 0), dst=('eth_src_nxm', 0), n_bits=48),
                     parser.NXFlowSpecLoad(src=('eth_src_nxm', 0), dst=('eth_dst_nxm', 0), n_bits=48),
                     parser.NXFlowSpecLoad(src=(ip_dst_nxm, 0), dst=(ip_src_nxm, 0), n_bits=ipbits),
                     parser.NXFlowSpecLoad(src=(ip_src_nxm, 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
-                    parser.NXFlowSpecOutput(src=('reg2', 0), dst='', n_bits=16),
+                    parser.NXFlowSpecOutput(src=(COPROPORTREG, 0), dst='', n_bits=16),
                 ]),
             # now that future flows are programmed, handle the packet we have.
             parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
             parser.OFPActionSetField(eth_dst=FAKESERVERMAC),
-            parser.NXActionRegMove(src_field=reg0, dst_field=('ipv%u_src' % ip_ver), n_bits=ipbits, src_ofs=0, dst_ofs=0),
+            parser.NXActionRegMove(src_field=AREG, dst_field=('ipv%u_src' % ip_ver), n_bits=ipbits, src_ofs=0, dst_ofs=0),
             parser.OFPActionSetField(**{'ipv%u_dst' % ip_ver: str(nfvip.ip)}),
             parser.OFPActionOutput(FAKEPORT)
-         ]
+        ]
 
 
     def natv6_flows(self, nfvip):
-        return self.apply_actions([])
-
-
-    def natv4_flows(self, nfvip):
-        # configure automatic learning.
         nat_base = nfvip.network.network_address
         # pylint: disable=no-member
         return self.apply_actions([
-            # first, calculate src NAT address, leave in reg0.
-            # Assuming ipv4_src is 192.168.2.5, ipv4_dst is 192.168.2.1, and NFVIP is 10.10.0.1/24
-            # ipv4_src becomes 10.10.5.1 (low octet of dst is LSB, then low octet of src).
-            parser.NXActionRegLoad(value=int(nat_base), dst='xxreg0', ofs_nbits=nicira_ext.ofs_nbits(0, 31)),
-            parser.NXActionRegMove(src_field='ipv4_src', dst_field='xxreg0', n_bits=8, src_ofs=0, dst_ofs=8),
-            parser.NXActionRegMove(src_field='ipv4_dst', dst_field='xxreg0', n_bits=8, src_ofs=0, dst_ofs=0),
-         ] + self.nat_actions(ether.ETH_TYPE_IP, nfvip, 'xxreg0'))
+            # ipv6_src fc01::5 -> fc04::5:0:1, ipv6_dst fc01::1 -> fc04::1
+            parser.NXActionRegLoad(value=(int(nat_base) & ((2**64)-1)), dst=AREG, ofs_nbits=nicira_ext.ofs_nbits(0, 63)),
+            parser.NXActionRegLoad(value=(int(nat_base) >> 64), dst=AREG, ofs_nbits=nicira_ext.ofs_nbits(64, 127)),
+            parser.NXActionRegMove(src_field='ipv6_src', dst_field=AREG, n_bits=32, src_ofs=0, dst_ofs=32),
+            parser.NXActionRegMove(src_field='ipv6_dst', dst_field=AREG, n_bits=32, src_ofs=0, dst_ofs=0),
+        ] + self.nat_actions(ether.ETH_TYPE_IPV6, nfvip))
+
+
+    def natv4_flows(self, nfvip):
+        nat_base = nfvip.network.network_address
+        # pylint: disable=no-member
+        return self.apply_actions([
+            # ipv4_src 192.168.2.5->10.10.5.1, ipv4_dst 192.168.2.1->10.10.0.1
+            parser.NXActionRegLoad(value=int(nat_base), dst=AREG, ofs_nbits=nicira_ext.ofs_nbits(0, 31)),
+            parser.NXActionRegMove(src_field='ipv4_src', dst_field=AREG, n_bits=8, src_ofs=0, dst_ofs=8),
+            parser.NXActionRegMove(src_field='ipv4_dst', dst_field=AREG, n_bits=8, src_ofs=0, dst_ofs=0),
+        ] + self.nat_actions(ether.ETH_TYPE_IP, nfvip))
 
 
     @staticmethod
@@ -156,9 +176,9 @@ class Pipette(app_manager.RyuApp):
         return self.apply_actions([
             parser.NXActionRegLoad(value=arp.ARP_REPLY, dst='arp_op', ofs_nbits=nicira_ext.ofs_nbits(0, 2)),
             parser.NXActionRegMove(src_field='arp_sha', dst_field='arp_tha', n_bits=48, src_ofs=0, dst_ofs=0),
-            parser.NXActionRegMove(src_field='arp_tpa', dst_field='xxreg0', n_bits=32, src_ofs=0, dst_ofs=0),
+            parser.NXActionRegMove(src_field='arp_tpa', dst_field=AREG, n_bits=32, src_ofs=0, dst_ofs=0),
             parser.NXActionRegMove(src_field='arp_spa', dst_field='arp_tpa', n_bits=32, src_ofs=0, dst_ofs=0),
-            parser.NXActionRegMove(src_field='xxreg0', dst_field='arp_spa', n_bits=32, src_ofs=0, dst_ofs=0),
+            parser.NXActionRegMove(src_field=AREG, dst_field='arp_spa', n_bits=32, src_ofs=0, dst_ofs=0),
             parser.OFPActionSetField(arp_sha=FAKECLIENTMAC),
             ] + common_reply)
 
@@ -235,7 +255,7 @@ class Pipette(app_manager.RyuApp):
                 instructions=[]))
 
 
-        def ipv6_flows(vlan_id, _nfvip):
+        def ipv6_flows(vlan_id, nfvip):
             return (
                 (INTF_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_IPV6, vlan_vid=vlan_id, ip_proto=socket.IPPROTO_ICMPV6, icmpv6_type=icmpv6.ND_NEIGHBOR_SOLICIT),
                  self.apply_actions([parser.OFPActionOutput(ofp.OFPP_CONTROLLER)])),) + self.tcp_udp_flows(vlan_id, nfvip, ether.ETH_TYPE_IPV6, self.natv6_flows)
