@@ -201,7 +201,7 @@ class Pipette(app_manager.RyuApp):
         def ipv6_flows(vlan_id, _nfvip):
             return (
                 (INTF_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_IPV6, vlan_vid=vlan_id, ip_proto=socket.IPPROTO_ICMPV6, icmpv6_type=icmpv6.ND_NEIGHBOR_SOLICIT),
-                 self.apply_actions([parser.OFPActionOutput(ofp.OFPP_CONTROLLER)])))
+                 self.apply_actions([parser.OFPActionOutput(ofp.OFPP_CONTROLLER)])),)
 
 
         def ipv4_flows(vlan_id, nfvip):
