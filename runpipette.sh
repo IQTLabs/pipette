@@ -110,7 +110,7 @@ sudo ovs-vsctl --if-exists del-br "$BR"
 echo "Configuring bridge"
 sudo ovs-vsctl add-br "$BR"
 echo "Adding ports"
-sudo ovs-vsctl add-port "$BR" "$COPROINT" -- set Interface "$COPROINT" ofport_request=$"COPROPORT"
+sudo ovs-vsctl add-port "$BR" "$COPROINT" -- set Interface "$COPROINT" ofport_request="$COPROPORT"
 sudo ovs-vsctl add-port "$BR" "ovs$FAKEINT" -- set Interface "ovs$FAKEINT" ofport_request="$FAKEPORT"
 echo "Setting controller"
 sudo ovs-vsctl set-controller "$BR" tcp:127.0.0.1:"$OF"
@@ -123,4 +123,5 @@ fi
 
 
 # docker build -f $DFILE . -t cyberreboot/pipette && docker run -e NFVIPS=$NFVIPS -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLANS=$VLANS -p 127.0.0.1:$OF:6653 -ti cyberreboot/pipette
+export NFVIPS VLANS COPROINT FAKEINT
 ryu-manager --verbose --ofp-tcp-listen-port "$OF" pipette.py
