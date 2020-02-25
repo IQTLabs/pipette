@@ -41,9 +41,9 @@ FAKESERVERMAC = netaddr.EUI(os.getenv('FAKESERVERMAC', '0e:00:00:00:00:66'), dia
 # We will fake all coprocessed hosts as having this MAC.
 FAKECLIENTMAC = netaddr.EUI(os.getenv('FAKECLIENTMAC', '0e:00:00:00:00:67'), dialect=netaddr.mac_unix)
 # VLAN(s) to coprocess
-VLANS = [int(vlan) for vlan in os.getenv('VLANS', '2').split(' ')]
+VLANS = [int(vlan) for vlan in os.getenv('VLANS', '2').strip().split(' ')]
 # IP addresses of fake services.
-NFVIPS = [ipaddress.ip_interface(nfvip) for nfvip in os.getenv('NFVIPS', '10.10.0.1/16').split(' ')]
+NFVIPS = [ipaddress.ip_interface(nfvip) for nfvip in os.getenv('NFVIPS', '10.10.0.1/16').strip().split(' ')]
 # Idle timeout for translated flows (garbage collect)
 IDLE = 300
 
