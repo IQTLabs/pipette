@@ -43,7 +43,14 @@ if [ $# -gt 0 ]; then
     check_args "$@"
 fi
 
-#sudo docker stop pipette
+
+if [ -f "$PIPETTE_TEMP_DIR/ryu.docker" ]; then
+    docker_id=$(cat "$PIPETTE_TEMP_DIR/ryu.docker")
+    echo "stopping container with id $docker_id"
+    sudo docker stop "$docker_id"
+    sudo docker rm "$docker_id"
+fi
+
 if [ -f "$PIPETTE_TEMP_DIR/ryu" ]; then
     ryu_pid=$(cat "$PIPETTE_TEMP_DIR/ryu")
     echo "killing process with pid $ryu_pid"
