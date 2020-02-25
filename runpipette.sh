@@ -16,11 +16,13 @@ function show_help()
       -b,  bridge        name of ovs bridge to create
       -p,  port          pipette port
       -v,  vlans         coprocessor vlans, space delimitted
-      -r,  record        record traffic captured by pipette should be followed by location then size of file i.e.: -r /pcaps.file.pcap 50"
+      -r,  record        record traffic captured by pipette should be followed by location then size of file i.e.: -r /pcaps.file.pcap 50
+      -n,  no-docker     run the ryu-manager on the local server instead of in a docker container"
 }
 
 function check_args()
 {
+    NO_DOCKER=0
     while [ $# -gt 1 ]; do
         case $1 in
             -c|coproint)
@@ -65,6 +67,9 @@ function check_args()
                 shift
                 FILE_SIZE="$2"
                 shift
+                ;;
+            -n|no-docker)
+                NO_DOCKER=1
                 ;;
             -h|\?|help)
                 show_help
@@ -125,8 +130,12 @@ if [ $RECORD -ne 0 ]; then
     echo $! >> "$PIPETTE_TEMP_DIR/tcpdump"
 fi
 
-
-# docker build -f $DFILE . -t cyberreboot/pipette && docker run -e NFVIPS=$NFVIPS -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLANS=$VLANS -p 127.0.0.1:$OF:6653 -ti cyberreboot/pipette
-export NFVIPS VLANS COPROINT FAKEINT
-ryu-manager --verbose --ofp-tcp-listen-port "$OF" pipette.py &
-echo $! >> "$PIPETTE_TEMP_DIR/ryu"
+if [[ NO_DOCKER -ne 0 ]]; then
+  export NFVIPS VLANS COPROINT FAKEINT
+  ryu-manager --verbose --ofp-tcp-listen-port "$OF" pipette.py &
+  echo $! >> "$PIPETTE_TEMP_DIR/ryu"
+else
+  docker build -f $DFILE . -t cyberreboot/pipette
+  docker_id=$(docker run -d -e NFVIPS=$NFVIPS -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLANS=$VLANS -p 127.0.0.1:$OF:6653 -ti cyberreboot/pipette)
+  echo "$docker_id" >> "$PIPETTE_TEMP_DIR/ryu.docker"
+fi
