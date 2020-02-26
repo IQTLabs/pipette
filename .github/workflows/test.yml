@@ -19,7 +19,7 @@ jobs:
         export PATH=/home/runner/.local/bin:$PATH
         pylint -E *py && \
         pytype *py && \
-        ./test_ovs_pipette.py && \
+        ./test_ovs_pipette.sh && \
         PYTHONPATH=. coverage run test_pipette.py && \
         coverage report pipette.py && \
         coverage xml pipette.py
