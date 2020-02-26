@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ipaddress
 import socket
 import unittest
-from pipette import Pipette, FAKEPORT
+from pipette import Pipette
 
 from ryu.lib.packet import ethernet, icmpv6, ipv6, packet, vlan
 from ryu.ofproto import ether
@@ -51,8 +52,10 @@ class PipetteSmokeTest(unittest.TestCase):  # pytype: disable=module-attr
 
 
     def test_smoke_connect(self):
-        pipette = Pipette(dpset={})
-        assert pipette.dp_connect(FakeEv()) is None
+        for nfvip in ('192.168.1.1/16', 'fc00::1/64'):
+            pipette = Pipette(dpset={})
+            pipette.NFVIPS = [ipaddress.ip_interface(nfvip)]
+            assert pipette.dp_connect(FakeEv()) is None
 
 
     def test_smoke_packet_in(self):
@@ -74,13 +77,13 @@ class PipetteSmokeTest(unittest.TestCase):  # pytype: disable=module-attr
 
 
         fake_dp = FakeDP()
-
+        pipette = Pipette(dpset={})
 
         class FakeMsg:
 
             def __init__(self):
                 self.datapath = fake_dp
-                self.match = {'in_port': FAKEPORT}
+                self.match = {'in_port': pipette.FAKEPORT}
                 self.data = nd_solicit.data
 
 
