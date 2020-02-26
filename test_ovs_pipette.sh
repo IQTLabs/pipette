@@ -15,7 +15,6 @@ wget -q -O$SANDBOX https://raw.githubusercontent.com/openvswitch/ovs/master/tuto
 chmod +x $SANDBOX
 
 cat > $TESTSCRIPT <<- EOTESTSCRIPT
-sleep 5
 ovs-vsctl add-br copro0 \
          -- set bridge copro0 other-config:datapath-id=0000000000000001 \
          -- add-port copro0 copro -- set interface copro ofport_request=1 \
@@ -40,8 +39,6 @@ chmod +x $TESTSCRIPT
 SHELL=$TESTSCRIPT $SANDBOX > $TESTOUTPUT
 kill $RPID
 
-cat $TESTSCRIPT
-cat $TESTOUTPUT
 grep "Final flow" $TESTOUTPUT
 
 # inbound NAT entry
