@@ -41,7 +41,10 @@ function check_args()
                 NFVIPS=""
                 while [[ "$2" != -* && -n "$2" ]]
                 do
-                  NFVIPS+="$2 "
+                  NFVIPS+="$2"
+                  if [[ "$3" != -* && -n "$3" ]]; then
+                    NFVIPS+=" "
+                  fi
                   shift
                 done 
                 ;;
@@ -49,7 +52,10 @@ function check_args()
                 VLANS=""
                 while [[ "$2" != -* && -n "$2" ]]
                 do
-                  VLANS+="$2 "
+                  VLANS+="$2"
+                  if [[ "$3" != -* && -n "$3" ]]; then
+                    NFVIPS+=" "
+                  fi
                   shift
                 done 
                 ;;
