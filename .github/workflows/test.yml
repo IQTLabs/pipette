@@ -12,13 +12,14 @@ jobs:
     - name: test
       run: |
         sudo apt-get update && \
-        sudo apt-get install -y python3-dev python3-setuptools && \
+        sudo apt-get install -y python3-dev python3-setuptools openvswitch-switch wget && \
         pip3 install -U pip && \
         pip3 install codecov && \
         pip3 install -U -r test-requirements.txt && \
         export PATH=/home/runner/.local/bin:$PATH
         pylint -E *py && \
         pytype *py && \
+        ./test_ovs_pipette.sh && \
         PYTHONPATH=. coverage run test_pipette.py && \
         coverage report pipette.py && \
         coverage xml pipette.py
