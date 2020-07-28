@@ -7,7 +7,6 @@ LICENSE
 README.md
 renovate.json
 
-Dockerfile.pi
 Dockerfile
 
 test-requirements.txt

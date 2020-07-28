@@ -29,7 +29,7 @@ jobs:
         DOCKER_PASSWORD: ${{ secrets.DOCKER_TOKEN }}
       run: |
         echo "${DOCKER_PASSWORD}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-      if: github.repository == 'cyberreboot/pipette' && github.event_name == 'push'
+      if: github.repository == 'iqtlabs/pipette' && github.event_name == 'push'
 
     - name: Build and push platforms
       env:
@@ -38,5 +38,5 @@ jobs:
         docker buildx build \
           --platform linux/amd64,linux/arm/v7,linux/arm64 \
           --push \
-          -t cyberreboot/pipette:${{ steps.change_version.outputs.VERSION }} .
-      if: github.repository == 'cyberreboot/pipette' && github.event_name == 'push'
+          -t iqtlabs/pipette:${{ steps.change_version.outputs.VERSION }} .
+      if: github.repository == 'iqtlabs/pipette' && github.event_name == 'push'
