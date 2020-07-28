@@ -16,7 +16,7 @@ NFVIPS="10.10.0.1/16"
 VLANS="2"
 # interface that will be created for fake services to run on.
 FAKEINT=fake0
-DFILE=Dockerfile.pi
+DFILE=Dockerfile
 
 ##
 # Optional config

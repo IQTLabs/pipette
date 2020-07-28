@@ -1,5 +1,5 @@
 # pipette
-![test](https://github.com/CyberReboot/pipette/workflows/test/badge.svg) [![codecov](https://codecov.io/gh/CyberReboot/pipette/branch/master/graph/badge.svg)](https://codecov.io/gh/CyberReboot/pipette) ![buildx](https://github.com/CyberReboot/pipette/workflows/buildx/badge.svg)
+![test](https://github.com/IQTLabs/pipette/workflows/test/badge.svg) [![codecov](https://codecov.io/gh/IQTLabs/pipette/branch/master/graph/badge.svg)](https://codecov.io/gh/IQTLabs/pipette) ![buildx](https://github.com/IQTLabs/pipette/workflows/buildx/badge.svg)
 
 ## An SDN/NFV coprocessor controller.
 Pipette is a tool that allows users to multiplex SDN coprocessing by implementing transparent L3 NAT. Pipette does this by creating a virtual network behind your coprocessor port and then acting as the SDN controller of that network. Packets are seamlessly switched to their appropriate destination using [Ryu](https://osrg.github.io/ryu/).
