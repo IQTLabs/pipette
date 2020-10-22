@@ -1,2 +1,2 @@
-eventlet==0.29.0
+eventlet==0.29.1
 ryu==4.34
