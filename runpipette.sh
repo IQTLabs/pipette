@@ -142,6 +142,7 @@ if [[ NO_DOCKER -ne 0 ]]; then
   echo $! >> "$PIPETTE_TEMP_DIR/ryu"
 else
   docker build -f $DFILE . -t iqtlabs/pipette
-  docker_id=$(docker run -d -e NFVIPS=$NFVIPS -e FAKESERVERMAC=$FAKESERVERMAC -e FAKECLIENTMAC=$FAKECLIENTMAC -e VLANS=$VLANS -p 127.0.0.1:$OF:6653 -ti iqtlabs/pipette)
+  docker_id=$(docker run -d -e NFVIPS="$NFVIPS" -e FAKESERVERMAC="$FAKESERVERMAC" -e FAKECLIENTMAC="$FAKECLIENTMAC" -e VLANS="$VLANS" \
+   -p 127.0.0.1:$OF:6653 -ti iqtlabs/pipette)
   echo "$docker_id" >> "$PIPETTE_TEMP_DIR/ryu.docker"
 fi
