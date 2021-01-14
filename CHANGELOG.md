@@ -1,3 +1,9 @@
+### [1.3](https://github.com/IQTLabs/pipette/compare/v1.1...v1.2) (2021-01-14)
+
+Fix shell var quoting
+Fix Docker build
+Upgrade pytype, eventlet, codecov-action
+
 ### [1.2](https://github.com/IQTLabs/pipette/compare/v1.1...v1.2) (2020-08-06)
 
 Repo move, dependency and documentation updates.
