@@ -66,12 +66,6 @@ fi
 #delete bridge
 sudo ovs-vsctl del-br "$BR"
 
-#bring down fake ip
-sudo ip link set "ovs$FAKEINT" down
-
-#remove fake switch
-sudo ip link del dev "ovs$FAKEINT"
-
 #reset coprocessor interface
 sudo ip link set "$COPROINT" down
 sudo ip link set "$COPROINT" up
