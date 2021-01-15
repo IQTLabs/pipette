@@ -91,44 +91,12 @@ if [ $# -gt 0 ]; then
 fi
 
 
-remove_int_ip() {
-  local int="$1"
-  sudo ip addr flush dev "$int"
-  sudo ip link set "$int" up
-}
-
 if [ ! -d "$PIPETTE_TEMP_DIR" ]; then
   mkdir "$PIPETTE_TEMP_DIR"
 fi
 
-# Configure pipette's OVS switch.
-echo "Configuring OVS switch for pipette"
-sudo ip link add dev "$FAKEINT" type veth peer name "ovs$FAKEINT"
-for i in $COPROINT $FAKEINT ovs$FAKEINT ; do
-  remove_int_ip "$i"
-done
-
-for ((i=0; i< "${#VLANS[@]}"; i++)) ; do
-  vlan="${VLANS[$i]}"
-  nfvip="${NFVIPS[$i]}"
-  fakeintvlan=${FAKEINT}.${vlan}
-  sudo ip link add link "$FAKEINT" name "$fakeintvlan" type vlan id "$vlan"
-  sudo ip link set dev "$fakeintvlan" address "$FAKESERVERMAC"
-  remove_int_ip "$fakeintvlan"
-  sudo ip addr add "$nfvip" dev "$fakeintvlan"
-done
-
-
-sudo ovs-vsctl --if-exists del-br "$BR"
-
-echo "Configuring bridge"
-sudo ovs-vsctl add-br "$BR"
-echo "Adding ports"
-sudo ovs-vsctl add-port "$BR" "$COPROINT" -- set Interface "$COPROINT" ofport_request="$COPROPORT"
-sudo ovs-vsctl add-port "$BR" "ovs$FAKEINT" -- set Interface "ovs$FAKEINT" ofport_request="$FAKEPORT"
-echo "Setting controller"
-sudo ovs-vsctl set-controller "$BR" tcp:127.0.0.1:"$OF"
-
+export BR VLANS COPROINT FAKEINT COPROPORT FAKEPORT FAKESERVERMAC NFVIPS
+./configureovs.sh || exit 1
 
 if [ $RECORD -ne 0 ]; then
     echo "Starting tcpdump on interface $COPROINT"
@@ -137,7 +105,6 @@ if [ $RECORD -ne 0 ]; then
 fi
 
 if [[ NO_DOCKER -ne 0 ]]; then
-  export NFVIPS VLANS COPROINT FAKEINT
   ryu-manager --verbose --ofp-tcp-listen-port "$OF" pipette.py &
   echo $! >> "$PIPETTE_TEMP_DIR/ryu"
 else
