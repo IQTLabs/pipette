@@ -1,0 +1,53 @@
+version: "3.7"
+services:
+  ovs:
+    image: iqtlabs/openvswitch:v2.13.1
+    volumes:
+      - /usr/local/var/run/openvswitch:/usr/local/var/run/openvswitch
+      - ovs-data:/etc/openvswitch
+    network_mode: host
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    cap_add:
+      - NET_ADMIN
+  pipette:
+    image: iqtlabs/pipette:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.pipette
+    depends_on:
+      - ovs
+    ports:
+      - "${OF}:6653"
+    environment:
+      - FAKECLIENTMAC=${FAKECLIENTMAC}
+      - FAKESERVERMAC=${FAKESERVERMAC}
+      - NFVIPS=${NFVIPS}
+      - VLANS=${VLANS}  
+  pipetteconf:
+    restart: on-failure
+    image: iqtlabs/pipetteconf:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.pipetteconf
+    network_mode: host
+    depends_on:
+      - ovs
+      - pipette
+    volumes:
+      - /usr/local/var/run/openvswitch:/var/run/openvswitch
+    environment:
+      - BR=${BR}
+      - COPROINT=${COPROINT}
+      - COPROPORT=${COPROPORT}
+      - FAKEINT=${FAKEINT}
+      - FAKEPORT=${FAKEPORT}
+      - FAKECLIENTMAC=${FAKECLIENTMAC}
+      - FAKESERVERMAC=${FAKESERVERMAC}
+      - NFVIPS=${NFVIPS}
+      - OF=${OF}
+      - VLANS=${VLANS}
+    cap_add:
+      - NET_ADMIN
+volumes:
+  ovs-data:

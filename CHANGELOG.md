@@ -1,4 +1,8 @@
-### [1.3](https://github.com/IQTLabs/pipette/compare/v1.1...v1.2) (2021-01-14)
+### [1.4](https://github.com/IQTLabs/pipette/compare/v1.1...v1.4) (2021-01-20)
+
+Allow starting pipette from docker-compose, simplify config.
+
+### [1.3](https://github.com/IQTLabs/pipette/compare/v1.1...v1.3) (2021-01-14)
 
 Fix shell var quoting
 Fix Docker build
