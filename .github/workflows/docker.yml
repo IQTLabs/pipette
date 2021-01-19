@@ -41,5 +41,9 @@ jobs:
         docker buildx build \
           --platform linux/amd64,linux/arm/v7,linux/arm64 \
           --push \
-          -t iqtlabs/pipette:${{ steps.change_version.outputs.VERSION }} .
+          -t iqtlabs/pipette:${{ steps.change_version.outputs.VERSION }} -f Dockerfile.pipette . && \
+        docker buildx build \
+          --platform linux/amd64,linux/arm/v7,linux/arm64 \
+          --push \
+          -t iqtlabs/pipetteconf:${{ steps.change_version.outputs.VERSION }} -f Dockerfile.pipetteconf .
       if: github.repository == 'iqtlabs/pipette' && github.event_name == 'push'
