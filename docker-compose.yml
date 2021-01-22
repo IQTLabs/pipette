@@ -1,4 +1,4 @@
-version: "3.7"
+version: "3.3"
 services:
   ovs:
     image: iqtlabs/openvswitch:v2.14.1
@@ -47,6 +47,7 @@ services:
       - NFVIPS=${NFVIPS}
       - OF=${OF}
       - VLANS=${VLANS}
+      - TC=${TC}
     cap_add:
       - NET_ADMIN
 volumes:
