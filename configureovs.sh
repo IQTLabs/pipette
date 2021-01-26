@@ -62,6 +62,7 @@ for tc in "${tcmap[@]}" ; do
   ip link del $tcbr 2> /dev/null || true
   ip link add name $tcbr type bridge
   ip link set dev $tcbr up
+  ip link set dev $tcint up
   ip link set dev $tcint master $tcbr
   bridge link set dev $tcint hairpin on
   tc qdisc add dev $tcint $tcpol
