@@ -23,7 +23,7 @@ services:
       - FAKECLIENTMAC=${FAKECLIENTMAC}
       - FAKESERVERMAC=${FAKESERVERMAC}
       - NFVIPS=${NFVIPS}
-      - VLANS=${VLANS}  
+      - VLANS=${VLANS}
   pipetteconf:
     restart: on-failure
     image: iqtlabs/pipetteconf:latest
