@@ -16,6 +16,7 @@
 import ipaddress
 import socket
 import unittest
+from pipette import FAKEPORT
 from pipette import Pipette
 
 from ryu.lib.packet import ethernet, icmpv6, ipv6, packet, vlan
@@ -77,13 +78,13 @@ class PipetteSmokeTest(unittest.TestCase):  # pytype: disable=module-attr
 
 
         fake_dp = FakeDP()
-        pipette = Pipette(dpset={})
+        fake_pipette = Pipette(dpset={})
 
         class FakeMsg:
 
             def __init__(self):
                 self.datapath = fake_dp
-                self.match = {'in_port': pipette.FAKEPORT}
+                self.match = {'in_port': FAKEPORT}
                 self.data = nd_solicit.data
 
 
@@ -93,8 +94,8 @@ class PipetteSmokeTest(unittest.TestCase):  # pytype: disable=module-attr
                 self.msg = FakeMsg()
 
 
-        pipette = Pipette(dpset={})
-        pipette.packet_in_handler(FakePiEv())
+        fake_pipette = Pipette(dpset={})
+        fake_pipette.packet_in_handler(FakePiEv())
         assert fake_dp.msgs
 
 
