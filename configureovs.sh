@@ -7,8 +7,14 @@ done
 
 set -e
 
+OLDBR=copro${ID}
+BR=pipette${ID}
+FAKEINT=fake${ID}
+FAKESERVERMAC=${FAKEMACPREFIX}:${ID}:${COPROPORT}
+FAKECLIENTMAC=${FAKEMACPREFIX}:${ID}:${FAKEPORT}
+
 # Configure pipette's OVS switch.
-echo "Configuring OVS bridge $BR for pipette"
+echo "Configuring OVS bridge $BR for pipette ID ${ID}"
 
 remove_int_ip() {
   local int="$1"
@@ -16,6 +22,7 @@ remove_int_ip() {
   ip link set "$int" up
 }
 
+ovs-vsctl --if-exists del-br "$OLDBR"
 ovs-vsctl --if-exists del-br "$BR"
 echo "Configuring bridge"
 ovs-vsctl add-br "$BR"
@@ -53,8 +60,9 @@ for tc in "${tcmap[@]}" ; do
   invid=${tcentry[0]}
   outvid=${tcentry[1]}
   tcpol=${tcentry[2]}
-  tcint=tc${invid}
-  tcbr=tcbr${invid}
+  suffix=${ID}v${invid}
+  tcint=tc${suffix}
+  tcbr=tcbr${suffix}
   echo configure tc map, input vid $invid, output vid $outvid, via $tcint/$tcbr
   ovs-vsctl add-port "$BR" "$tcint" -- set Interface "$tcint" ofport_request="$invid" type=internal
   ovs-ofctl add-flow "$BR" priority=64738,in_port=$invid,actions=output:$COPROPORT
