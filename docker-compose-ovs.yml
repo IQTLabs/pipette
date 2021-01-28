@@ -1,0 +1,14 @@
+version: "3.3"
+services:
+  ovs:
+    image: iqtlabs/openvswitch:v2.14.1
+    volumes:
+      - /usr/local/var/run/openvswitch:/usr/local/var/run/openvswitch
+      - ovs-data:/etc/openvswitch
+    network_mode: host
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    cap_add:
+      - NET_ADMIN
+volumes:
+  ovs-data:

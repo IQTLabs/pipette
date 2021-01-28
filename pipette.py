@@ -30,22 +30,25 @@ from ryu.ofproto import ether, nicira_ext
 from ryu.ofproto import ofproto_v1_3 as ofp
 from ryu.ofproto import ofproto_v1_3_parser as parser
 
+# OVS port facing coprocessor (expects packets with a tag from the configured VLAN/s)
+# Coprocessor only accepts packets with a VLAN tag.
+COPROPORT = int(os.getenv('COPROPORT', '1'))
+# OVS port facing fake services.
+FAKEPORT = int(os.getenv('FAKEPORT', '2'))
+# Fake interface must have this MAC.
+ID = int(os.getenv('ID', 0))
+FAKE_MAC_PREFIX = os.getenv('FAKEMACPREFIX', '0e:00:00:01')
+FAKESERVERMAC = netaddr.EUI(FAKE_MAC_PREFIX + (':%u:%u' % (ID, COPROPORT)), dialect=netaddr.mac_unix)
+# We will fake all coprocessed hosts as having this MAC.
+FAKECLIENTMAC = netaddr.EUI(FAKE_MAC_PREFIX + (':%u:%u' % (ID, FAKEPORT)), dialect=netaddr.mac_unix)
+# VLAN(s) to coprocess
+VLANS = [int(vlan) for vlan in os.getenv('VLANS', '2').strip().split(' ')]
+# IP addresses of fake services.
+NFVIPS = [ipaddress.ip_interface(nfvip) for nfvip in os.getenv('NFVIPS', '10.10.0.1/16').strip().split(' ')]
+
 
 class Pipette(app_manager.RyuApp):
 
-    # OVS port facing coprocessor (expects packets with a tag from the configured VLAN/s)
-    # Coprocessor only accepts packets with a VLAN tag.
-    COPROPORT = int(os.getenv('COPROPORT', '1'))
-    # OVS port facing fake services.
-    FAKEPORT = int(os.getenv('FAKEPORT', '2'))
-    # Fake interface must have this MAC.
-    FAKESERVERMAC = netaddr.EUI(os.getenv('FAKESERVERMAC', '0e:00:00:00:00:66'), dialect=netaddr.mac_unix)
-    # We will fake all coprocessed hosts as having this MAC.
-    FAKECLIENTMAC = netaddr.EUI(os.getenv('FAKECLIENTMAC', '0e:00:00:00:00:67'), dialect=netaddr.mac_unix)
-    # VLAN(s) to coprocess
-    VLANS = [int(vlan) for vlan in os.getenv('VLANS', '2').strip().split(' ')]
-    # IP addresses of fake services.
-    NFVIPS = [ipaddress.ip_interface(nfvip) for nfvip in os.getenv('NFVIPS', '10.10.0.1/16').strip().split(' ')]
     # Idle timeout for translated flows (garbage collect)
     IDLE = 300
 
@@ -95,8 +98,8 @@ class Pipette(app_manager.RyuApp):
             parser.NXActionRegMove(src_field='ipv%u_src' % ip_ver, dst_field=self.AREG, n_bits=nat_offset, src_ofs=0, dst_ofs=nat_offset),
             parser.NXActionRegMove(src_field='ipv%u_dst' % ip_ver, dst_field=self.AREG, n_bits=nat_offset, src_ofs=0, dst_ofs=0),
             # we have to load output port numbers into reg1 and reg2 because NXFlowSpecOutput() won't take a literal.
-            parser.NXActionRegLoad(value=self.FAKEPORT, dst=self.FAKEPORTREG, ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
-            parser.NXActionRegLoad(value=self.COPROPORT, dst=self.COPROPORTREG, ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
+            parser.NXActionRegLoad(value=FAKEPORT, dst=self.FAKEPORTREG, ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
+            parser.NXActionRegLoad(value=COPROPORT, dst=self.COPROPORTREG, ofs_nbits=nicira_ext.ofs_nbits(0, 15)),
             # now program an inbound flow to perform NAT.
             parser.NXActionLearn(
                 table_id=self.FROM_COPRO_TABLE,
@@ -106,8 +109,8 @@ class Pipette(app_manager.RyuApp):
                     parser.NXFlowSpecMatch(src=eth_type, dst=('eth_type_nxm', 0), n_bits=16),
                     parser.NXFlowSpecMatch(src=(ip_src_nxm, 0), dst=(ip_src_nxm, 0), n_bits=ipbits),
                     parser.NXFlowSpecMatch(src=(ip_dst_nxm, 0), dst=(ip_dst_nxm, 0), n_bits=ipbits),
-                    parser.NXFlowSpecLoad(src=int(self.FAKECLIENTMAC), dst=('eth_src_nxm', 0), n_bits=48),
-                    parser.NXFlowSpecLoad(src=int(self.FAKESERVERMAC), dst=('eth_dst_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecLoad(src=int(FAKECLIENTMAC), dst=('eth_src_nxm', 0), n_bits=48),
+                    parser.NXFlowSpecLoad(src=int(FAKESERVERMAC), dst=('eth_dst_nxm', 0), n_bits=48),
                 ] + self.reg_copy(self.AREG, ip_src_nxm, ipbits) + [
                     parser.NXFlowSpecLoad(src=int(nfvip.ip), dst=(ip_dst_nxm, 0), n_bits=ipbits),
                     parser.NXFlowSpecOutput(src=(self.FAKEPORTREG, 0), dst='', n_bits=16),
@@ -128,11 +131,11 @@ class Pipette(app_manager.RyuApp):
                     parser.NXFlowSpecOutput(src=(self.COPROPORTREG, 0), dst='', n_bits=16),
                 ]),
             # now that future flows are programmed, handle the packet we have.
-            parser.OFPActionSetField(eth_src=self.FAKECLIENTMAC),
-            parser.OFPActionSetField(eth_dst=self.FAKESERVERMAC),
+            parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
+            parser.OFPActionSetField(eth_dst=FAKESERVERMAC),
             parser.NXActionRegMove(src_field=self.AREG, dst_field=('ipv%u_src' % ip_ver), n_bits=ipbits, src_ofs=0, dst_ofs=0),
             parser.OFPActionSetField(**{'ipv%u_dst' % ip_ver: str(nfvip.ip)}),
-            parser.OFPActionOutput(self.FAKEPORT)
+            parser.OFPActionOutput(FAKEPORT)
         ]
 
 
@@ -161,7 +164,7 @@ class Pipette(app_manager.RyuApp):
         # pylint: disable=no-member
         return [
             parser.NXActionRegMove(src_field='eth_src', dst_field='eth_dst', n_bits=48, src_ofs=0, dst_ofs=0),
-            parser.OFPActionSetField(eth_src=self.FAKECLIENTMAC),
+            parser.OFPActionSetField(eth_src=FAKECLIENTMAC),
             parser.OFPActionOutput(ofp.OFPP_IN_PORT)
         ]
 
@@ -175,7 +178,7 @@ class Pipette(app_manager.RyuApp):
             parser.NXActionRegMove(src_field='arp_tpa', dst_field=self.AREG, n_bits=32, src_ofs=0, dst_ofs=0),
             parser.NXActionRegMove(src_field='arp_spa', dst_field='arp_tpa', n_bits=32, src_ofs=0, dst_ofs=0),
             parser.NXActionRegMove(src_field=self.AREG, dst_field='arp_spa', n_bits=32, src_ofs=0, dst_ofs=0),
-            parser.OFPActionSetField(arp_sha=self.FAKECLIENTMAC),
+            parser.OFPActionSetField(arp_sha=FAKECLIENTMAC),
             ] + common_reply)
 
 
@@ -186,17 +189,17 @@ class Pipette(app_manager.RyuApp):
              nat_flows(nfvip)),
             # Packets from coprocessor go to tuple inbound table.
             (self.INTF_TABLE, parser.OFPMatch(
-                eth_type=eth_type, ip_proto=socket.IPPROTO_TCP, in_port=self.COPROPORT, vlan_vid=vlan_id),
+                eth_type=eth_type, ip_proto=socket.IPPROTO_TCP, in_port=COPROPORT, vlan_vid=vlan_id),
              [parser.OFPInstructionGotoTable(self.FROM_COPRO_TABLE)]),
             (self.INTF_TABLE, parser.OFPMatch(
-                eth_type=eth_type, ip_proto=socket.IPPROTO_UDP, in_port=self.COPROPORT, vlan_vid=vlan_id),
+                eth_type=eth_type, ip_proto=socket.IPPROTO_UDP, in_port=COPROPORT, vlan_vid=vlan_id),
              [parser.OFPInstructionGotoTable(self.FROM_COPRO_TABLE)]),
             # Packets from fake interface go outbound table.
             (self.INTF_TABLE, parser.OFPMatch(
-                eth_type=eth_type, ip_proto=socket.IPPROTO_TCP, in_port=self.FAKEPORT, vlan_vid=vlan_id),
+                eth_type=eth_type, ip_proto=socket.IPPROTO_TCP, in_port=FAKEPORT, vlan_vid=vlan_id),
              [parser.OFPInstructionGotoTable(self.TO_COPRO_TABLE)]),
             (self.INTF_TABLE, parser.OFPMatch(
-                eth_type=eth_type, ip_proto=socket.IPPROTO_UDP, in_port=self.FAKEPORT, vlan_vid=vlan_id),
+                eth_type=eth_type, ip_proto=socket.IPPROTO_UDP, in_port=FAKEPORT, vlan_vid=vlan_id),
              [parser.OFPInstructionGotoTable(self.TO_COPRO_TABLE)]))
 
 
@@ -214,7 +217,7 @@ class Pipette(app_manager.RyuApp):
             (self.TO_COPRO_TABLE, parser.OFPMatch(eth_type=ether.ETH_TYPE_ARP, vlan_vid=vlan_id),
              self.arp_reply_actions()),
             (self.INTF_TABLE, parser.OFPMatch(
-                eth_type=ether.ETH_TYPE_ARP, eth_src=self.FAKESERVERMAC, in_port=self.FAKEPORT, arp_op=arp.ARP_REQUEST, vlan_vid=vlan_id),
+                eth_type=ether.ETH_TYPE_ARP, eth_src=FAKESERVERMAC, in_port=FAKEPORT, arp_op=arp.ARP_REQUEST, vlan_vid=vlan_id),
              [parser.OFPInstructionGotoTable(self.TO_COPRO_TABLE)])) + self.tcp_udp_flows(vlan_id, nfvip, ether.ETH_TYPE_IP, self.natv4_flows)
 
 
@@ -242,7 +245,7 @@ class Pipette(app_manager.RyuApp):
                 priority=0,
                 instructions=[]))
 
-        for nfvlan, nfvip in zip(self.VLANS, self.NFVIPS):
+        for nfvlan, nfvip in zip(VLANS, NFVIPS):
             vlan_id = (nfvlan | ofp.OFPVID_PRESENT)
             if nfvip.version == 6:
                 flows = self.ipv6_flows
@@ -261,8 +264,8 @@ class Pipette(app_manager.RyuApp):
 
     def report_port(self, of_port):
         port_names = {
-            self.COPROPORT: 'COPROPORT',
-            self.FAKEPORT: 'FAKEPORT',
+            COPROPORT: 'COPROPORT',
+            FAKEPORT: 'FAKEPORT',
         }
         port_name = port_names.get(of_port.port_no, None)
         if not port_name:
@@ -286,7 +289,7 @@ class Pipette(app_manager.RyuApp):
     # See https://docs.opendaylight.org/projects/netvirt/en/latest/specs/fluorine/ovs_based_na_responder_for_gw.html.
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER) # pylint: disable=no-member
     def packet_in_handler(self, event):
-        if event.msg.match['in_port'] != self.FAKEPORT:
+        if event.msg.match['in_port'] != FAKEPORT:
             return
         pkt = packet.Packet(event.msg.data)
         eth_protocol = pkt.get_protocol(ethernet.ethernet)
@@ -304,7 +307,7 @@ class Pipette(app_manager.RyuApp):
             return
         eth_dst = eth_protocol.src
         dst_ip = ipv6_protocol.src
-        eth_src = self.FAKECLIENTMAC
+        eth_src = FAKECLIENTMAC
         vid = vlan_protocol.vid
         reply = packet.Packet()
         for protocol in (
@@ -320,5 +323,5 @@ class Pipette(app_manager.RyuApp):
             datapath=event.msg.datapath,
             buffer_id=ofp.OFP_NO_BUFFER,
             in_port=ofp.OFPP_CONTROLLER,
-            actions=[parser.OFPActionOutput(self.FAKEPORT)], data=reply.data)
+            actions=[parser.OFPActionOutput(FAKEPORT)], data=reply.data)
         self.send_mods(event.msg.datapath, [out])
