@@ -1,0 +1,40 @@
+version: "3.3"
+services:
+  pipette:
+    image: iqtlabs/pipette:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.pipette
+    ports:
+      - "${OF}:6653"
+    environment:
+      - FAKEMACPREFIX=${FAKEMACPREFIX}
+      - COPROPORT=${COPROPORT}
+      - FAKEPORT=${FAKEPORT}
+      - NFVIPS=${NFVIPS}
+      - VLANS=${VLANS}
+      - ID=${ID}
+  pipetteconf:
+    restart: on-failure
+    image: iqtlabs/pipetteconf:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.pipetteconf
+    network_mode: host
+    depends_on:
+      - pipette
+    volumes:
+      - /usr/local/var/run/openvswitch:/var/run/openvswitch
+    environment:
+      - COPROINT=${COPROINT}
+      - COPROPORT=${COPROPORT}
+      - FAKEPORT=${FAKEPORT}
+      - FAKEMACPREFIX=${FAKEMACPREFIX}
+      - NFVIPS=${NFVIPS}
+      - OF=${OF}
+      - VLANS=${VLANS}
+      - TC=${TC}
+      - ID=${ID}
+      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
+    cap_add:
+      - NET_ADMIN

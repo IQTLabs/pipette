@@ -42,7 +42,8 @@ kill $RPID
 grep "Final flow" $TESTOUTPUT
 
 # inbound NAT entry
-grep -q "Final flow: tcp,reg1=0x2,reg2=0x1,reg7=0xa0a0501,in_port=1,dl_vlan=2,dl_vlan_pcp=0,vlan_tci1=0x0000,dl_src=0e:00:00:00:00:67,dl_dst=0e:00:00:00:00:66,nw_src=10.10.5.1,nw_dst=10.10.0.1,nw_tos=0,nw_ecn=0,nw_ttl=0,tp_src=9999,tp_dst=80,tcp_flags=0" $TESTOUTPUT
+grep -q "Final flow: tcp,reg1=0x2,reg2=0x1,reg7=0xa0a0501,in_port=1,dl_vlan=2,dl_vlan_pcp=0,vlan_tci1=0x0000,dl_src=0e:00:00:01:00:02,dl_dst=0e:00:00:01:00:01,nw_src=10.10.5.1,nw_dst=10.10.0.1,nw_tos=0,nw_ecn=0,nw_ttl=0,tp_src=9999,tp_dst=80,tcp_flags=0" $TESTOUTPUT
+
 # outbound NAT entry
 grep -q "Final flow: tcp,in_port=2,dl_vlan=2,dl_vlan_pcp=0,vlan_tci1=0x0000,dl_src=0e:00:00:00:00:02,dl_dst=0e:00:00:00:00:01,nw_src=192.168.2.1,nw_dst=192.168.2.5,nw_tos=0,nw_ecn=0,nw_ttl=0,tp_src=80,tp_dst=9999,tcp_flags=0" $TESTOUTPUT
 

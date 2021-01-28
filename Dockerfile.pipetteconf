@@ -1,0 +1,8 @@
+# 3.13 does not work on Raspbian, https://github.com/alpinelinux/docker-alpine/issues/110
+FROM alpine:3.12
+
+RUN apk update && \
+  apk add openvswitch iproute2 bash
+
+COPY configureovs.sh /configureovs.sh
+ENTRYPOINT ["/configureovs.sh"]
