@@ -6,7 +6,7 @@ Pipette is a tool that allows users to multiplex SDN coprocessing by implementin
 
 ## Usage
 
- 1. If an OVS container is not already present, start OVS: `docker-compose -f docker-compose-ovs.yml up -d`
+ 1. If an OVS container is not already present, start OVS: `docker-compose -f docker-compose-ovs.yml up -d`. If you have OVS running already (eg, you are running dovesnap), skip this step.
  1. Start pipette: `COPROINT=<ethX> VLANS=<VLANs> NFVIPS=<NFVIPs> OF=<OF TCP port> ID=0 docker-compose -p 0 up -d` (see Configuration section - example `COPROINT=eth1 VLANS=2 NFVIPS=10.10.0.1/16 OF=6699 ID=0 docker-compose -p 0 up -d`.
  1. Start fake services listening on the NFVIP address assigned to the fake interface (Eg, IP of `fake0.2` for VLAN 2 - pipette manages this interface and assigns the NFVIP). Fake services do not have to be in Docker.
  1. When finished, `docker-compose down`.
