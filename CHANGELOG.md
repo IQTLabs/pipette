@@ -1,3 +1,11 @@
+### [1.7](https://github.com/IQTLabs/pipette/compare/v1.6...v1.7) (2021-03-05)
+
+Upgrade to OVS 2.14.2, pytype and and eventlet.
+
+### [1.6](https://github.com/IQTLabs/pipette/compare/v1.5...v1.6) (2021-01-29)
+
+Support multiple pipette instances.
+
 ### [1.5](https://github.com/IQTLabs/pipette/compare/v1.4...v1.5) (2021-01-20)
 
 Add tc processing support.
