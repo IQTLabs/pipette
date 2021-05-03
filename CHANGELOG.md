@@ -1,3 +1,7 @@
+### [1.8](https://github.com/IQTLabs/pipette/compare/v1.7...v1.8) (2021-05-04)
+
+Upgrade pytype, codecov.
+
 ### [1.7](https://github.com/IQTLabs/pipette/compare/v1.6...v1.7) (2021-03-05)
 
 Upgrade to OVS 2.14.2, pytype and and eventlet.
