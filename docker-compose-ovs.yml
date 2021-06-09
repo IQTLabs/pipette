@@ -1,7 +1,7 @@
 version: "3.3"
 services:
   ovs:
-    image: iqtlabs/openvswitch:v2.15.0
+    image: iqtlabs/openvswitch:v2.14.2
     volumes:
       - /usr/local/var/run/openvswitch:/usr/local/var/run/openvswitch
       - ovs-data:/etc/openvswitch
