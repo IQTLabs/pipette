@@ -25,10 +25,6 @@ jobs:
         coverage xml pipette.py
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v2.0.1
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
       if: github.repository == 'iqtlabs/pipette'
     - name: docker-test
       run: |
