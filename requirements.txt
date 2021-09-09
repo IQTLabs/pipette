@@ -1,2 +1,2 @@
 eventlet==0.31.0
-ryu==4.34
+git+https://github.com/c65sdn/ryu.git@4690327cfd0a491d0567984a197b621de7b41008
