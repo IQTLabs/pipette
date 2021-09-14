@@ -1,2 +1,1 @@
-eventlet
 c65ryu==5.0.0
