@@ -22,13 +22,13 @@ import socket
 import os
 import sys
 import netaddr
-from ryu.base import app_manager
-from ryu.controller import dpset, ofp_event
-from ryu.controller.handler import MAIN_DISPATCHER, set_ev_cls
-from ryu.lib.packet import arp, ethernet, icmpv6, ipv6, packet, vlan
-from ryu.ofproto import ether, nicira_ext
-from ryu.ofproto import ofproto_v1_3 as ofp
-from ryu.ofproto import ofproto_v1_3_parser as parser
+from os_ken.base import app_manager
+from os_ken.controller import dpset, ofp_event
+from os_ken.controller.handler import MAIN_DISPATCHER, set_ev_cls
+from os_ken.lib.packet import arp, ethernet, icmpv6, ipv6, packet, vlan
+from os_ken.ofproto import ether, nicira_ext
+from os_ken.ofproto import ofproto_v1_3 as ofp
+from os_ken.ofproto import ofproto_v1_3_parser as parser
 
 # OVS port facing coprocessor (expects packets with a tag from the configured VLAN/s)
 # Coprocessor only accepts packets with a VLAN tag.
@@ -47,7 +47,7 @@ VLANS = [int(vlan) for vlan in os.getenv('VLANS', '2').strip().split(' ')]
 NFVIPS = [ipaddress.ip_interface(nfvip) for nfvip in os.getenv('NFVIPS', '10.10.0.1/16').strip().split(' ')]
 
 
-class Pipette(app_manager.RyuApp):
+class Pipette(app_manager.OSKenApp):
 
     # Idle timeout for translated flows (garbage collect)
     IDLE = 300

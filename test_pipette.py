@@ -19,8 +19,8 @@ import unittest
 from pipette import FAKEPORT
 from pipette import Pipette
 
-from ryu.lib.packet import ethernet, icmpv6, ipv6, packet, vlan
-from ryu.ofproto import ether
+from os_ken.lib.packet import ethernet, icmpv6, ipv6, packet, vlan
+from os_ken.ofproto import ether
 
 
 class FakePort:
