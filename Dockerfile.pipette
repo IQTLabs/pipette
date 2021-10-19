@@ -8,4 +8,4 @@ RUN apk add gcc g++ git python3-dev musl-dev && \
 
 EXPOSE 6653
 
-CMD ["ryu-manager", "/pipette-src/pipette.py"]
+CMD ["osken-manager", "/pipette-src/pipette.py"]
