@@ -1,3 +1,12 @@
+### [1.10](https://github.com/IQTLabs/pipette/compare/v1.9...v1.10) (2021-11-09)
+
+Upgrade pytype, OVS, docker, eventlet.
+Switch to OSKen from Ryu.
+
+### [1.9](https://github.com/IQTLabs/pipette/compare/v1.8...v1.9) (2021-06-17)
+
+Upgrade pytype, OVS, docker, alpine.
+
 ### [1.8](https://github.com/IQTLabs/pipette/compare/v1.7...v1.8) (2021-05-04)
 
 Upgrade pytype, codecov.
