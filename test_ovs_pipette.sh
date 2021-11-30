@@ -32,7 +32,7 @@ ovs-appctl ofproto/trace copro0 in_port=copro,dl_vlan=2,dl_src=0e:00:00:00:00:01
 ovs-appctl ofproto/trace copro0 in_port=fake,dl_vlan=2,dl_src=0e:00:00:00:00:66,dl_dst=0e:00:00:00:00:67,eth_type=0x800,nw_src=10.10.0.1,nw_dst=10.10.5.1,nw_proto=6,tcp_src=80,tcp_dst=9999 -generate
 EOTESTSCRIPT
 
-ryu-manager pipette.py --verbose --ofp-tcp-listen-port $OF &
+osken-manager pipette.py --verbose --ofp-tcp-listen-port $OF &
 RPID=$!
 
 chmod +x $TESTSCRIPT
