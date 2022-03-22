@@ -1,3 +1,7 @@
+### [1.11](https://github.com/IQTLabs/pipette/compare/v1.10...v1.11) (2022-03-23)
+
+Upgrade os-ken, alpine, OVS, docker, pytype.
+
 ### [1.10](https://github.com/IQTLabs/pipette/compare/v1.9...v1.10) (2021-11-09)
 
 Upgrade pytype, OVS, docker, eventlet.
