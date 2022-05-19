@@ -1,4 +1,4 @@
 -r requirements.txt
 pylint
-pytype==2022.5.10
+pytype==2022.5.19
 coverage
