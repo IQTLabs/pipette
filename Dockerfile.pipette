@@ -2,9 +2,11 @@ FROM faucet/python3:9.0.0
 
 COPY ./ /pipette-src/
 
-RUN apk add gcc g++ git python3-dev musl-dev py3-pip && \
+# TODO: osken 2.5.0 brings in paramiko via ncclient, which requires
+# extensive dependencies (https://bugs.launchpad.net/neutron/+bug/1988220)
+RUN apk add gcc g++ git python3-dev musl-dev py3-pip make rust cargo py3-pip libffi-dev libxml2-dev libxslt-dev openssl-dev && \
         pip3 install -r pipette-src/requirements.txt && \
-        apk del gcc git python3-dev musl-dev
+        apk del gcc git python3-dev musl-dev make rust cargo
 
 EXPOSE 6653
 
