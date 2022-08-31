@@ -1,1 +1,1 @@
-os-ken==2.5.0
+git+https://github.com/c65sdn/os-ken@1.0.0
