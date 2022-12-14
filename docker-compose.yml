@@ -2,7 +2,7 @@ version: "3.3"
 services:
   pipette:
     image: iqtlabs/pipette:latest
-   build:
+    build:
       context: .
       dockerfile: Dockerfile.pipette
     ports:
