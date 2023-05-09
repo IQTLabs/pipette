@@ -1,5 +1,5 @@
 # 3.13 does not work on Raspbian, https://github.com/alpinelinux/docker-alpine/issues/110
-FROM alpine:3.17
+FROM alpine:3.18
 
 RUN apk update && \
   apk add openvswitch iproute2 bash
