@@ -23,7 +23,7 @@ jobs:
         coverage report pipette.py && \
         coverage xml pipette.py
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3.1.4
+      uses: codecov/codecov-action@v3.1.6
       if: github.repository == 'iqtlabs/pipette'
     - name: docker-test
       run: |
